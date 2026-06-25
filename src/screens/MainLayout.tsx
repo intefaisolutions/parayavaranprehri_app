@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { api } from '../utils/api';
 import DashboardScreen from './DashboardScreen';
 import VehiclesScreen from './VehiclesScreen';
 import ProfileScreen from './ProfileScreen';
@@ -26,6 +27,7 @@ import {
 } from '../data/vehiclesData';
 
 interface MainLayoutProps {
+  user?: any;
   onLogout: () => void;
 }
 
@@ -45,11 +47,44 @@ type OverlayScreen =
   | 'adminPreview'
   | 'vehicleDetail';
 
-export default function MainLayout({ onLogout }: MainLayoutProps) {
+const mapBackendVehicle = (v: any): Vehicle => ({
+  id: v._id || v.id,
+  name: v.name,
+  plate: v.plate,
+  vhId: v.vhId,
+  fuel: v.fuel || 'Diesel',
+  regDate: v.createdAt
+    ? new Date(v.createdAt).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '12 Aug 2024',
+  trees: 3,
+  co2: 45,
+  survival: '100%',
+  status: 'Active',
+  iconUrl: 'https://img.icons8.com/color/96/suv.png',
+});
+
+export default function MainLayout({ user, onLogout }: MainLayoutProps) {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [overlay, setOverlay] = useState<OverlayScreen | null>(null);
-  const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+
+  const fetchVehicles = async () => {
+    try {
+      const data = await api.get<any[]>('/vehicles');
+      setVehicles(data.map(mapBackendVehicle));
+    } catch (error) {
+      console.error('Error fetching vehicles:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchVehicles();
+  }, []);
 
   const closeOverlay = () => {
     setOverlay(null);
@@ -62,20 +97,13 @@ export default function MainLayout({ onLogout }: MainLayoutProps) {
   };
 
   const registerVehicle = (added: AddedVehicle) => {
-    setVehicles(prev => {
-      const normalized = added.plate.replace(/\s/g, '').toUpperCase();
-      const exists = prev.some(
-        v => v.plate.replace(/\s/g, '').toUpperCase() === normalized,
-      );
-      if (exists) {
-        return prev;
-      }
-      return [...prev, createVehicleFromAdded(added)];
-    });
+    // Vehicles are now added via AddVehicleScreen calling POST /vehicles
+    fetchVehicles();
   };
 
   const handleAddVehicleComplete = () => {
     closeOverlay();
+    fetchVehicles();
     setActiveTab('vehicles');
   };
 
@@ -84,6 +112,7 @@ export default function MainLayout({ onLogout }: MainLayoutProps) {
       case 'home':
         return (
           <DashboardScreen
+            user={user}
             vehicles={vehicles}
             onViewJourney={() => setOverlay('journey')}
             onAddVehicle={openAddVehicle}
@@ -113,6 +142,7 @@ export default function MainLayout({ onLogout }: MainLayoutProps) {
       case 'profile':
         return (
           <ProfileScreen
+            user={user}
             vehicles={vehicles}
             onLogout={onLogout}
             onMyVehicles={() => setActiveTab('vehicles')}
@@ -124,6 +154,7 @@ export default function MainLayout({ onLogout }: MainLayoutProps) {
       default:
         return (
           <DashboardScreen
+            user={user}
             vehicles={vehicles}
             onViewJourney={() => setOverlay('journey')}
             onAddVehicle={openAddVehicle}

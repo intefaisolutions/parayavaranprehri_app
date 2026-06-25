@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +11,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon, { IconName } from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { api } from '../utils/api';
 
 type Props = {
   onBack: () => void;
@@ -23,6 +26,40 @@ const CATEGORIES = [
 
 export default function GreenSelfieScreen({ onBack }: Props) {
   const [activeCategory, setActiveCategory] = useState('Eco Hero');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [selfies, setSelfies] = useState<any[]>([]);
+
+  const fetchSelfies = async () => {
+    try {
+      const data = await api.get<any[]>('/green-selfies');
+      setSelfies(data);
+    } catch (err) {
+      console.error('Error fetching green selfies:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchSelfies();
+  }, []);
+
+  const handleTakeSelfie = async () => {
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      await api.post('/green-selfies', {
+        imgUrl: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&q=80&w=400',
+        category: activeCategory,
+        location: 'Indore, Madhya Pradesh',
+      });
+      fetchSelfies();
+      Alert.alert('Success', 'Green Selfie uploaded successfully!');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to upload selfie.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -105,15 +142,53 @@ export default function GreenSelfieScreen({ onBack }: Props) {
           </View>
         </View>
 
-        <Pressable style={styles.takeSelfieBtnWrap}>
+        <Pressable
+          style={[styles.takeSelfieBtnWrap, loading && { opacity: 0.7 }]}
+          onPress={handleTakeSelfie}
+          disabled={loading}
+        >
           <LinearGradient
             colors={['#7dd3a0', '#44b969']}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.takeSelfieBtn}>
-            <Text style={styles.takeSelfieBtnText}>📷  Take Selfie</Text>
+            {loading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.takeSelfieBtnText}>📷  Take Selfie</Text>
+            )}
           </LinearGradient>
         </Pressable>
+
+        {errorMsg ? (
+          <Text style={{ color: '#d32f2f', fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+            {errorMsg}
+          </Text>
+        ) : null}
+
+        {/* Gallery / Feed Section */}
+        {selfies.length > 0 ? (
+          <View style={{ marginTop: 24 }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: '#0a3617', marginBottom: 12 }}>
+              Recent Green Selfies
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {selfies.map((selfie: any) => (
+                <View key={selfie._id || selfie.id} style={{ width: '47%', backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', padding: 12, borderWidth: 1, borderColor: '#e5e7eb' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#126e35', textTransform: 'uppercase', marginBottom: 2 }}>
+                    {selfie.category}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#4b5563', marginBottom: 4 }}>
+                    📍 {selfie.location}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#9ca3af' }}>
+                    {selfie.createdAt ? new Date(selfie.createdAt).toLocaleDateString() : 'Just now'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );

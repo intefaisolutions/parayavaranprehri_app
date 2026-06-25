@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { api } from '../utils/api';
 
 type Props = {
   onBack: () => void;
@@ -26,9 +28,32 @@ export default function OfferLandScreen({ onBack }: Props) {
   const [landmark, setLandmark] = useState('');
   const [availableArea, setAvailableArea] = useState('');
   const [landSize, setLandSize] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = () => {
-    setStep('success');
+  const handleSubmit = async () => {
+    if (!fullName || !mobile || !address || !landmark || !availableArea || !landSize) {
+      setErrorMsg('Please fill all fields');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      await api.post('/land-offers', {
+        fullName,
+        phone: mobile,
+        address,
+        landmark,
+        availableArea,
+        landSize,
+      });
+      setStep('success');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to submit inquiry. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -131,13 +156,27 @@ export default function OfferLandScreen({ onBack }: Props) {
                 placeholderTextColor="#9ca3af"
               />
 
-              <Pressable style={styles.submitBtnWrap} onPress={handleSubmit}>
+              {errorMsg ? (
+                <Text style={{ color: '#d32f2f', fontSize: 13, marginTop: 8, marginBottom: 8 }}>
+                  {errorMsg}
+                </Text>
+              ) : null}
+
+              <Pressable
+                style={[styles.submitBtnWrap, loading && { opacity: 0.7 }]}
+                onPress={handleSubmit}
+                disabled={loading}
+              >
                 <LinearGradient
                   colors={['#0c4820', '#2b964f']}
                   start={{ x: 0, y: 0.5 }}
                   end={{ x: 1, y: 0.5 }}
                   style={styles.submitBtn}>
-                  <Text style={styles.submitBtnText}>✈  Submit inquiry</Text>
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>✈  Submit inquiry</Text>
+                  )}
                 </LinearGradient>
               </Pressable>
             </View>

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +14,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { AddedVehicle, generateVehicleId } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { api } from '../utils/api';
 
 type Props = {
   onBack: () => void;
@@ -49,6 +51,8 @@ export default function AddVehicleScreen({
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [selectedInsurance, setSelectedInsurance] = useState('shieldsure');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const otpRef = useRef<TextInput>(null);
 
   const goNext = () => setStep(prev => Math.min(prev + 1, TOTAL_STEPS));
@@ -72,18 +76,34 @@ export default function AddVehicleScreen({
     }
   };
 
-  const handleRegisterVehicle = () => {
+  const handleRegisterVehicle = async () => {
     const plate =
       vehicleNumber.trim() ||
       `MP09 XX ${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const vhId = generateVehicleId();
-    onRegisterVehicle({
-      plate,
-      name: REGISTERED_VEHICLE.name,
-      vhId,
-      fuel: REGISTERED_VEHICLE.fuel,
-    });
-    goNext();
+    
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      await api.post('/vehicles', {
+        plate,
+        name: REGISTERED_VEHICLE.name,
+        vhId,
+        fuel: REGISTERED_VEHICLE.fuel,
+        insuranceId: selectedInsurance,
+      });
+      onRegisterVehicle({
+        plate,
+        name: REGISTERED_VEHICLE.name,
+        vhId,
+        fuel: REGISTERED_VEHICLE.fuel,
+      });
+      goNext();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to register vehicle. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderStepContent = () => {
@@ -210,7 +230,16 @@ export default function AddVehicleScreen({
                 green officer.
               </Text>
             </View>
-            <GradientButton label="Register vehicle" onPress={handleRegisterVehicle} />
+            {errorMsg ? (
+              <Text style={{ color: '#d32f2f', fontSize: 13, marginTop: 8, marginBottom: 8 }}>
+                {errorMsg}
+              </Text>
+            ) : null}
+            <GradientButton
+              label={loading ? "Registering..." : "Register vehicle"}
+              onPress={handleRegisterVehicle}
+              disabled={loading}
+            />
           </>
         );
 

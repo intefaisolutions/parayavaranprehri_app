@@ -15,6 +15,7 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 const { width } = Dimensions.get('window');
 
 interface ProfileScreenProps {
+  user?: any;
   vehicles: Vehicle[];
   onLogout: () => void;
   onMyVehicles?: () => void;
@@ -24,6 +25,7 @@ interface ProfileScreenProps {
 }
 
 export default function ProfileScreen({
+  user,
   vehicles,
   onLogout,
   onMyVehicles,
@@ -56,13 +58,21 @@ export default function ProfileScreen({
         >
           <View style={styles.profileInfoRow}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>RS</Text>
+              <Text style={styles.avatarText}>
+                {user?.firstName && user?.lastName
+                  ? `${user.firstName[0]}${user.lastName[0]}`
+                  : 'RS'}
+              </Text>
             </View>
             <View style={styles.profileDetails}>
-              <Text style={styles.profileName}>Rahul Sharma</Text>
-              <Text style={styles.profilePhone}>+91 98260 12345</Text>
+              <Text style={styles.profileName}>
+                {user ? `${user.firstName} ${user.lastName}` : 'Rahul Sharma'}
+              </Text>
+              <Text style={styles.profilePhone}>
+                {user?.phone ? `+91 ${user.phone}` : '+91 98260 12345'}
+              </Text>
               <Text style={styles.profileLocation}>
-                Indore, Madhya Pradesh · Joined 12 Aug 2024
+                {user?.email || 'rahul@paryavaran.com'}
               </Text>
             </View>
           </View>

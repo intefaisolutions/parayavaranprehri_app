@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { api } from '../utils/api';
 
 type Props = {
   onSendOtp: (phoneNumber: string) => void;
@@ -37,6 +39,7 @@ export default function LoginScreen({ onSendOtp }: Props) {
   const [phone, setPhone] = useState('');
   const [touched, setTouched] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const digitsOnly = phone.replace(/\D/g, '');
   const isValid = digitsOnly.length === 10;
@@ -53,14 +56,27 @@ export default function LoginScreen({ onSendOtp }: Props) {
     setPhone(value);
   };
 
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
     setTouched(true);
     if (!isValid) return;
 
+    let email = '';
     if (digitsOnly === '9826012345') {
-      onSendOtp(digitsOnly);
+      email = 'rahul@paryavaran.com';
     } else {
       setErrorMsg('This number is not registered. Try 98260 12345');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      await api.post('/auth/otp/request', { email });
+      onSendOtp(digitsOnly);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,13 +146,13 @@ export default function LoginScreen({ onSendOtp }: Props) {
             {/* SEND OTP BUTTON */}
             <Pressable
               onPress={handleSendOtp}
-              disabled={!isValid}
+              disabled={!isValid || loading}
               style={({ pressed }) => [
                 styles.buttonOuter,
-                isValid && pressed && { opacity: 0.8 },
+                isValid && !loading && pressed && { opacity: 0.8 },
               ]}
             >
-              {isValid ? (
+              {isValid && !loading ? (
                 <LinearGradient
                   colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                   start={{ x: 0, y: 0 }}
@@ -147,7 +163,11 @@ export default function LoginScreen({ onSendOtp }: Props) {
                 </LinearGradient>
               ) : (
                 <View style={[styles.buttonInner, styles.buttonDisabled]}>
-                  <Text style={styles.buttonText}>Send OTP</Text>
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Send OTP</Text>
+                  )}
                 </View>
               )}
             </Pressable>

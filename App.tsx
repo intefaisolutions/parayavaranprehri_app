@@ -32,9 +32,12 @@ class ErrorBoundary extends Component<
   }
 }
 
+import { setApiToken } from './src/utils/api';
+
 function App() {
   const [screen, setScreen] = useState<'login' | 'otp' | 'dashboard'>('login');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [authData, setAuthData] = useState<any>(null);
 
   return (
     <ErrorBoundary>
@@ -55,13 +58,22 @@ function App() {
           <OtpScreen
             phoneNumber={phoneNumber}
             onBack={() => setScreen('login')}
-            onVerify={() => setScreen('dashboard')}
+            onVerify={(data) => {
+              setApiToken(data.accessToken);
+              setAuthData(data);
+              setScreen('dashboard');
+            }}
           />
         ) : (
-          <MainLayout onLogout={() => {
-            setScreen('login');
-            setPhoneNumber('');
-          }} />
+          <MainLayout
+            user={authData?.user}
+            onLogout={() => {
+              setApiToken(null);
+              setAuthData(null);
+              setScreen('login');
+              setPhoneNumber('');
+            }}
+          />
         )}
       </SafeAreaProvider>
     </ErrorBoundary>

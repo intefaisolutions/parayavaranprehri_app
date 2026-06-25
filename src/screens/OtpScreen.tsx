@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -12,14 +13,15 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { api } from '../utils/api';
 
 type Props = {
   phoneNumber: string;
   onBack: () => void;
-  onVerify: () => void;
+  onVerify: (authData: any) => void;
 };
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Precise colors matching LoginScreen
@@ -39,6 +41,7 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
   const [otp, setOtp] = useState('');
   const [touched, setTouched] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   const isValid = otp.length === OTP_LENGTH;
@@ -57,14 +60,27 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
     setOtp(cleaned);
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     setTouched(true);
     if (!isValid) return;
 
-    if (otp === '1234') {
-      onVerify();
+    let email = '';
+    if (phoneNumber === '9826012345') {
+      email = 'rahul@paryavaran.com';
     } else {
-      setErrorMsg('Invalid OTP. Please try 1234');
+      setErrorMsg('This phone number is not associated with an account.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      const data = await api.post('/auth/otp/verify', { email, code: otp });
+      onVerify(data);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Invalid or expired OTP.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -141,13 +157,13 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
 
             <Pressable
               onPress={handleVerify}
-              disabled={!isValid}
+              disabled={!isValid || loading}
               style={({ pressed }) => [
                 styles.buttonOuter,
-                isValid && pressed && { opacity: 0.8 },
+                isValid && !loading && pressed && { opacity: 0.8 },
               ]}
             >
-              {isValid ? (
+              {isValid && !loading ? (
                 <LinearGradient
                   colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                   start={{ x: 0, y: 0 }}
@@ -158,7 +174,11 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
                 </LinearGradient>
               ) : (
                 <View style={[styles.buttonInner, styles.buttonDisabled]}>
-                  <Text style={styles.buttonText}>Verify & Continue</Text>
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Verify & Continue</Text>
+                  )}
                 </View>
               )}
             </Pressable>

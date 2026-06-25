@@ -25,6 +25,7 @@ type QuickAction = {
 };
 
 type DashboardScreenProps = {
+  user?: any;
   vehicles: Vehicle[];
   onViewJourney?: () => void;
   onAddVehicle?: () => void;
@@ -40,6 +41,7 @@ type DashboardScreenProps = {
 };
 
 export default function DashboardScreen({
+  user,
   vehicles,
   onViewJourney,
   onAddVehicle,
@@ -80,14 +82,22 @@ export default function DashboardScreen({
           <View style={styles.headerRow}>
             <View style={styles.profileInfo}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>RS</Text>
+                <Text style={styles.avatarText}>
+                  {user?.firstName && user?.lastName
+                    ? `${user.firstName[0]}${user.lastName[0]}`
+                    : 'RS'}
+                </Text>
               </View>
               <View style={styles.nameBlock}>
                 <Text style={styles.greeting}>Namaste 🙏</Text>
-                <Text style={styles.name}>Rahul Sharma</Text>
+                <Text style={styles.name}>
+                  {user ? `${user.firstName} ${user.lastName}` : 'Rahul Sharma'}
+                </Text>
                 <View style={styles.locationRow}>
                   <AppIcon name="map-marker-outline" size={12} color="#b2e3c6" />
-                  <Text style={styles.locationText}>Rau Vidhan Sabha, Indore</Text>
+                  <Text style={styles.locationText}>
+                    {user?.email || 'Rau Vidhan Sabha, Indore'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -562,12 +572,16 @@ export default function DashboardScreen({
               </View>
               <View style={styles.leaderboardInfo}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.leaderboardName}>Rahul Sharma</Text>
+                  <Text style={styles.leaderboardName}>
+                    {user ? `${user.firstName} ${user.lastName}` : 'Rahul Sharma'}
+                  </Text>
                   <View style={styles.youBadge}>
                     <Text style={styles.youBadgeText}>YOU</Text>
                   </View>
                 </View>
-                <Text style={styles.leaderboardVehicle}>Land Rover Defender</Text>
+                <Text style={styles.leaderboardVehicle}>
+                  {vehicles.length > 0 ? vehicles[0].name : 'Land Rover Defender'}
+                </Text>
               </View>
               <View style={styles.leaderboardScore}>
                 <Text style={styles.leaderboardScoreTop}>24 🌳</Text>
