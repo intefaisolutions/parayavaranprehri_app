@@ -1,9 +1,7 @@
-import React, { Component, useState } from 'react';
+import React, { Component } from 'react';
 import { StatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import LoginScreen from './src/screens/LoginScreen';
-import OtpScreen from './src/screens/OtpScreen';
-import MainLayout from './src/screens/MainLayout';
+import AppNavigator from './src/navigation/AppNavigator';
 
 type ErrorBoundaryState = {
   error: Error | null;
@@ -32,13 +30,7 @@ class ErrorBoundary extends Component<
   }
 }
 
-import { setApiToken } from './src/utils/api';
-
 function App() {
-  const [screen, setScreen] = useState<'login' | 'otp' | 'dashboard'>('login');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [authData, setAuthData] = useState<any>(null);
-
   return (
     <ErrorBoundary>
       <SafeAreaProvider style={styles.root}>
@@ -47,34 +39,7 @@ function App() {
           backgroundColor="transparent"
           translucent
         />
-        {screen === 'login' ? (
-          <LoginScreen
-            onSendOtp={phone => {
-              setPhoneNumber(phone);
-              setScreen('otp');
-            }}
-          />
-        ) : screen === 'otp' ? (
-          <OtpScreen
-            phoneNumber={phoneNumber}
-            onBack={() => setScreen('login')}
-            onVerify={(data) => {
-              setApiToken(data.accessToken);
-              setAuthData(data);
-              setScreen('dashboard');
-            }}
-          />
-        ) : (
-          <MainLayout
-            user={authData?.user}
-            onLogout={() => {
-              setApiToken(null);
-              setAuthData(null);
-              setScreen('login');
-              setPhoneNumber('');
-            }}
-          />
-        )}
+        <AppNavigator />
       </SafeAreaProvider>
     </ErrorBoundary>
   );
