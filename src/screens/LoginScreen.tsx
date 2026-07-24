@@ -13,11 +13,10 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { api } from '../utils/api';
-
-type Props = {
-  onSendOtp: (phoneNumber: string) => void;
-};
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
+import { RootStackParamList } from '../navigation/types';
+import { ApiError, authService } from '../api';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -35,7 +34,8 @@ const COLORS = {
   error: '#d32f2f',
 };
 
-export default function LoginScreen({ onSendOtp }: Props) {
+export default function LoginScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [phone, setPhone] = useState('');
   const [touched, setTouched] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -58,23 +58,19 @@ export default function LoginScreen({ onSendOtp }: Props) {
 
   const handleSendOtp = async () => {
     setTouched(true);
-    if (!isValid) return;
+    if (!isValid || loading) return;
 
-    let email = '';
-    if (digitsOnly === '9826012345') {
-      email = 'rahul@paryavaran.com';
-    } else {
-      setErrorMsg('This number is not registered. Try 98260 12345');
-      return;
-    }
-
+    setLoading(true);
+    setErrorMsg('');
     try {
-      setLoading(true);
-      setErrorMsg('');
-      await api.post('/auth/otp/request', { email });
-      onSendOtp(digitsOnly);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send OTP. Please try again.');
+      await authService.requestOtp({ phone: digitsOnly });
+      navigation.navigate('Otp', { phoneNumber: digitsOnly });
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to send OTP. Please try again.';
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -106,7 +102,7 @@ export default function LoginScreen({ onSendOtp }: Props) {
               <Text style={styles.logoLeaf}>🌿</Text>
             </View>
             <View>
-              <Text style={styles.brandName}>Paryavaran Prahri</Text>
+              <Text style={styles.brandName}>Prayavarn Prehri</Text>
               <Text style={styles.brandTagline}>Drive Green. Grow Future.</Text>
             </View>
           </View>
@@ -149,25 +145,25 @@ export default function LoginScreen({ onSendOtp }: Props) {
               disabled={!isValid || loading}
               style={({ pressed }) => [
                 styles.buttonOuter,
-                isValid && !loading && pressed && { opacity: 0.8 },
+                isValid && pressed && { opacity: 0.8 },
               ]}
             >
-              {isValid && !loading ? (
+              {isValid ? (
                 <LinearGradient
                   colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.buttonInner}
                 >
-                  <Text style={styles.buttonText}>Send OTP</Text>
-                </LinearGradient>
-              ) : (
-                <View style={[styles.buttonInner, styles.buttonDisabled]}>
                   {loading ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
+                    <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={styles.buttonText}>Send OTP</Text>
                   )}
+                </LinearGradient>
+              ) : (
+                <View style={[styles.buttonInner, styles.buttonDisabled]}>
+                  <Text style={styles.buttonText}>Send OTP</Text>
                 </View>
               )}
             </Pressable>

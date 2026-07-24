@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Dimensions,
+  FlatList,
   Image,
   Pressable,
   ScrollView,
@@ -9,6 +10,83 @@ import {
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+
+const INITIATIVE_LEADERS = [
+  {
+    id: '1',
+    name: 'Shri Narendra Modi',
+    title: "Hon'ble Prime Minister, India",
+    quote: '"Small steps today, a sustainable tomorrow. We are #CommittedToOurPlanet."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/32.jpg',
+  },
+  {
+    id: '2',
+    name: 'Dr. Mohan Yadav',
+    title: "Hon'ble Chief Minister, Madhya Pradesh",
+    quote: '"A green Madhya Pradesh is a prosperous Madhya Pradesh."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/44.jpg',
+  },
+  {
+    id: '3',
+    name: 'IAS Manish Singh',
+    title: 'Indian Administrative Service',
+    quote: '"Governance with green vision builds tomorrow\'s India."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/12.jpg',
+  },
+  {
+    id: '4',
+    name: 'Dr. Ram Patidar',
+    title: 'Environmentalist, Biodiversity Conservationist & Mission Advisor',
+    quote: '"Every tree we plant is a promise to the next generation."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/60.jpg',
+    topBadge: '⭐ Inspiration',
+    achievements: ['🌱 Environmentalist', '🏆 World Record Holder', '🌿 Biodiversity', '🤝 Mission Advisor'],
+  },
+  {
+    id: '5',
+    name: 'Shivam Verma',
+    title: 'Collector, Indore',
+    quote: '"Every vehicle, every tree — one greener Indore."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/22.jpg',
+  },
+  {
+    id: '6',
+    name: 'Siddharth Jain',
+    title: 'Jila Panchayat CEO',
+    quote: '"Civic action rooted in nature."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/14.jpg',
+  },
+  {
+    id: '7',
+    name: 'Kshitij Singhal',
+    title: 'Municipal Corporation',
+    quote: '"Cleaner air begins on our streets."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/16.jpg',
+  },
+  {
+    id: '8',
+    name: 'Pradeep Kumar Sharma',
+    title: 'RTO, Indore',
+    quote: '"Mobility that gives back to the planet."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/18.jpg',
+  },
+  {
+    id: '9',
+    name: 'Pushyamitra Bhargav',
+    title: 'Mayor, Indore',
+    quote: '"Pride of Indore — leaf by leaf."',
+    buttonText: 'IN Green Mission',
+    imageUri: 'https://randomuser.me/api/portraits/men/20.jpg',
+  }
+];
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon, { IconName } from '../components/AppIcon';
 import { computeProfileStats, Vehicle } from '../data/vehiclesData';
@@ -25,7 +103,6 @@ type QuickAction = {
 };
 
 type DashboardScreenProps = {
-  user?: any;
   vehicles: Vehicle[];
   onViewJourney?: () => void;
   onAddVehicle?: () => void;
@@ -41,7 +118,6 @@ type DashboardScreenProps = {
 };
 
 export default function DashboardScreen({
-  user,
   vehicles,
   onViewJourney,
   onAddVehicle,
@@ -82,22 +158,14 @@ export default function DashboardScreen({
           <View style={styles.headerRow}>
             <View style={styles.profileInfo}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {user?.firstName && user?.lastName
-                    ? `${user.firstName[0]}${user.lastName[0]}`
-                    : 'RS'}
-                </Text>
+                <Text style={styles.avatarText}>RS</Text>
               </View>
               <View style={styles.nameBlock}>
                 <Text style={styles.greeting}>Namaste 🙏</Text>
-                <Text style={styles.name}>
-                  {user ? `${user.firstName} ${user.lastName}` : 'Rahul Sharma'}
-                </Text>
+                <Text style={styles.name}>Rahul Sharma</Text>
                 <View style={styles.locationRow}>
                   <AppIcon name="map-marker-outline" size={12} color="#b2e3c6" />
-                  <Text style={styles.locationText}>
-                    {user?.email || 'Rau Vidhan Sabha, Indore'}
-                  </Text>
+                  <Text style={styles.locationText}>Rau Vidhan Sabha, Indore</Text>
                 </View>
               </View>
             </View>
@@ -572,16 +640,12 @@ export default function DashboardScreen({
               </View>
               <View style={styles.leaderboardInfo}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.leaderboardName}>
-                    {user ? `${user.firstName} ${user.lastName}` : 'Rahul Sharma'}
-                  </Text>
+                  <Text style={styles.leaderboardName}>Rahul Sharma</Text>
                   <View style={styles.youBadge}>
                     <Text style={styles.youBadgeText}>YOU</Text>
                   </View>
                 </View>
-                <Text style={styles.leaderboardVehicle}>
-                  {vehicles.length > 0 ? vehicles[0].name : 'Land Rover Defender'}
-                </Text>
+                <Text style={styles.leaderboardVehicle}>Land Rover Defender</Text>
               </View>
               <View style={styles.leaderboardScore}>
                 <Text style={styles.leaderboardScoreTop}>24 🌳</Text>
@@ -598,49 +662,51 @@ export default function DashboardScreen({
             <Text style={styles.swipeText}>SWIPE →</Text>
           </View>
 
-          <ScrollView
+          <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScrollContent}
-          >
-            {/* Leader 1 */}
-            <View style={styles.leaderCard}>
-              <View style={styles.leaderAvatarContainer}>
-                <Image 
-                  source={{ uri: 'https://randomuser.me/api/portraits/men/32.jpg' }}
-                  style={styles.leaderAvatarImage}
-                  resizeMode="cover"
-                />
+            snapToInterval={296}
+            decelerationRate="fast"
+            snapToAlignment="start"
+            data={INITIATIVE_LEADERS}
+            keyExtractor={item => item.id}
+            renderItem={({ item: leader }) => (
+              <View style={styles.leaderCard}>
+                {leader.topBadge && (
+                  <View style={styles.leaderTopBadge}>
+                    <Text style={styles.leaderTopBadgeText}>{leader.topBadge}</Text>
+                  </View>
+                )}
+                <View style={styles.leaderAvatarContainer}>
+                  <Image 
+                    source={{ uri: leader.imageUri }}
+                    style={styles.leaderAvatarImage}
+                    resizeMode="cover"
+                  />
+                </View>
+                <Text style={styles.leaderName}>{leader.name}</Text>
+                <Text style={styles.leaderTitle}>{leader.title}</Text>
+                <Text style={styles.leaderQuote}>
+                  {leader.quote}
+                </Text>
+                
+                {leader.achievements && (
+                  <View style={styles.leaderAchievementsRow}>
+                    {leader.achievements.map((ach, idx) => (
+                      <View key={idx} style={styles.leaderAchievementBadge}>
+                        <Text style={styles.leaderAchievementText}>{ach}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                
+                <View style={styles.greenMissionBadge}>
+                  <Text style={styles.greenMissionBadgeText}>{leader.buttonText}</Text>
+                </View>
               </View>
-              <Text style={styles.leaderName}>Shri Narendra Modi</Text>
-              <Text style={styles.leaderTitle}>Hon'ble Prime Minister of India</Text>
-              <Text style={styles.leaderQuote}>
-                "Mission LiFE — Lifestyle for Environment is India's gift to the world."
-              </Text>
-              <View style={styles.greenMissionBadge}>
-                <Text style={styles.greenMissionBadgeText}>IN Green Mission</Text>
-              </View>
-            </View>
-
-            {/* Leader 2 */}
-            <View style={styles.leaderCard}>
-              <View style={styles.leaderAvatarContainer}>
-                <Image 
-                  source={{ uri: 'https://randomuser.me/api/portraits/men/44.jpg' }}
-                  style={styles.leaderAvatarImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <Text style={styles.leaderName}>Dr. Mohan Yadav</Text>
-              <Text style={styles.leaderTitle}>Hon'ble Chief Minister, Madhya Pradesh</Text>
-              <Text style={styles.leaderQuote}>
-                "A green Madhya Pradesh is a prosperous Madhya Pradesh."
-              </Text>
-              <View style={styles.greenMissionBadge}>
-                <Text style={styles.greenMissionBadgeText}>IN Green Mission</Text>
-              </View>
-            </View>
-          </ScrollView>
+            )}
+          />
         </View>
 
         {/* FOOTER ACTION CARDS */}
@@ -1608,6 +1674,37 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 11,
     fontWeight: '700',
+  },
+  leaderTopBadge: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  leaderTopBadgeText: {
+    color: '#f59e0b',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  leaderAchievementsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 16,
+  },
+  leaderAchievementBadge: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  leaderAchievementText: {
+    fontSize: 10,
+    color: '#4b5563',
+    fontWeight: '600',
   },
   footerActionsContainer: {
     flexDirection: 'row',

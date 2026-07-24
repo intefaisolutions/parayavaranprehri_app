@@ -14,7 +14,8 @@ import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { AddedVehicle, generateVehicleId } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { api } from '../utils/api';
+import { ApiError, vehiclesService } from '../api';
+import { mapApiVehicleToUi } from '../api/mappers';
 
 type Props = {
   onBack: () => void;
@@ -51,8 +52,8 @@ export default function AddVehicleScreen({
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [selectedInsurance, setSelectedInsurance] = useState('shieldsure');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [registering, setRegistering] = useState(false);
+  const [registerError, setRegisterError] = useState('');
   const otpRef = useRef<TextInput>(null);
 
   const goNext = () => setStep(prev => Math.min(prev + 1, TOTAL_STEPS));
@@ -77,32 +78,41 @@ export default function AddVehicleScreen({
   };
 
   const handleRegisterVehicle = async () => {
+    if (registering) return;
+
     const plate =
       vehicleNumber.trim() ||
       `MP09 XX ${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const vhId = generateVehicleId();
-    
+    const payload = {
+      plate,
+      name: REGISTERED_VEHICLE.name,
+      vhId,
+      fuel: REGISTERED_VEHICLE.fuel,
+      insuranceId: selectedInsurance,
+    };
+
+    setRegistering(true);
+    setRegisterError('');
     try {
-      setLoading(true);
-      setErrorMsg('');
-      await api.post('/vehicles', {
-        plate,
-        name: REGISTERED_VEHICLE.name,
-        vhId,
-        fuel: REGISTERED_VEHICLE.fuel,
-        insuranceId: selectedInsurance,
-      });
+      const created = await vehiclesService.create(payload);
+      const mapped = mapApiVehicleToUi(created);
       onRegisterVehicle({
-        plate,
-        name: REGISTERED_VEHICLE.name,
-        vhId,
-        fuel: REGISTERED_VEHICLE.fuel,
+        id: mapped.id,
+        plate: mapped.plate,
+        name: mapped.name,
+        vhId: mapped.vhId,
+        fuel: mapped.fuel,
       });
       goNext();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to register vehicle. Please try again.');
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to register vehicle';
+      setRegisterError(message);
     } finally {
-      setLoading(false);
+      setRegistering(false);
     }
   };
 
@@ -230,15 +240,14 @@ export default function AddVehicleScreen({
                 green officer.
               </Text>
             </View>
-            {errorMsg ? (
-              <Text style={{ color: '#d32f2f', fontSize: 13, marginTop: 8, marginBottom: 8 }}>
-                {errorMsg}
-              </Text>
+            {registerError ? (
+              <Text style={styles.registerError}>{registerError}</Text>
             ) : null}
             <GradientButton
-              label={loading ? "Registering..." : "Register vehicle"}
+              label="Register vehicle"
               onPress={handleRegisterVehicle}
-              disabled={loading}
+              disabled={registering}
+              loading={registering}
             />
           </>
         );
@@ -380,10 +389,12 @@ function GradientButton({
   label,
   onPress,
   disabled,
+  loading,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }) {
   return (
     <Pressable
@@ -395,7 +406,11 @@ function GradientButton({
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={styles.gradientBtn}>
-        <Text style={styles.gradientBtnText}>{label}</Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.gradientBtnText}>{label}</Text>
+        )}
       </LinearGradient>
     </Pressable>
   );
@@ -671,6 +686,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#126e35',
     lineHeight: 18,
+  },
+  registerError: {
+    color: '#d32f2f',
+    fontSize: 13,
+    marginBottom: 10,
+    textAlign: 'center',
   },
   successTitle: {
     fontSize: 22,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dimensions,
   Modal,
@@ -12,6 +12,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { ApiError, staticDataService } from '../api';
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +26,7 @@ const SUB_FILTERS: Record<string, string[]> = {
   'Fuel': ['All', 'Electric', 'Diesel', 'Petrol', 'CNG'],
 };
 
-const MOCK_DATA = [
+const FALLBACK_DATA = [
   { id: 1, rank: 1, name: 'Aarav', vehicle: 'Land Rover Defender', location: 'Indore', model: 'Defender', fuel: 'Diesel', vidhanSabha: 'Rau', co2: 612, trees: 41, survival: 92 },
   { id: 4, rank: 2, name: 'Neha', vehicle: 'Tata Nexon EV', location: 'Indore', model: 'Nexon EV', fuel: 'EV', vidhanSabha: 'Rau', co2: 488, trees: 33, survival: 88 },
   { id: 2, rank: 3, name: 'Rahul', vehicle: 'Land Rover Defender', location: 'Indore', model: 'Defender', fuel: 'Diesel', vidhanSabha: 'Indore-2', co2: 312, trees: 24, survival: 100, isUser: true },
@@ -44,7 +45,7 @@ const SORT_LABELS: Record<SortBy, string> = {
   survival: 'Survival',
 };
 
-type RankItem = (typeof MOCK_DATA)[number];
+type RankItem = (typeof FALLBACK_DATA)[number] & { isUser?: boolean };
 
 function getSortValue(item: RankItem, sortBy: SortBy) {
   if (sortBy === 'trees') return item.trees;
@@ -70,6 +71,50 @@ export default function RanksScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('trees');
   const [sortDrawerVisible, setSortDrawerVisible] = useState(false);
+  const [rankData, setRankData] = useState<RankItem[]>(FALLBACK_DATA);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await staticDataService.getGamification();
+        if (
+          mounted &&
+          data?.leaderboard &&
+          Array.isArray(data.leaderboard) &&
+          data.leaderboard.length > 0
+        ) {
+          setRankData(
+            data.leaderboard.map((entry, index) => ({
+              id: index + 1,
+              rank: entry.rank ?? index + 1,
+              name: entry.name,
+              vehicle: entry.level,
+              location: '',
+              model: entry.level,
+              fuel: '',
+              vidhanSabha: '',
+              co2: entry.points,
+              trees: Math.max(1, Math.round(entry.points / 30)),
+              survival: Math.min(100, Math.round(entry.points / 12)),
+              isUser: entry.name.toLowerCase().includes('priya'),
+            })),
+          );
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError
+              ? error.message
+              : 'Failed to load ranks',
+          );
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleCategoryChange = (cat: string) => {
     setActiveCategory(cat);
@@ -81,14 +126,11 @@ export default function RanksScreen() {
     setSortDrawerVisible(false);
   };
 
-  // Filtering Logic
-  const filteredData = MOCK_DATA.filter((item) => {
-    // Dynamic Category Filtering
+  const filteredData = rankData.filter((item) => {
     if (activeSubFilter !== 'All') {
       if (activeCategory === 'Model' && item.model !== activeSubFilter) return false;
       if (activeCategory === 'Vidhan Sabha' && item.vidhanSabha !== activeSubFilter) return false;
     }
-    // Filter by search query
     if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) && !item.vehicle.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }

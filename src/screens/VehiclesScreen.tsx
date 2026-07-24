@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { Vehicle } from '../data/vehiclesData';
@@ -26,10 +27,11 @@ export default function VehiclesScreen({
   onViewDetails,
 }: Props) {
   const activeCount = vehicles.filter(v => v.status === 'Active').length;
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>My Vehicles</Text>
           <Text style={styles.headerSubtitle}>
@@ -158,7 +160,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,

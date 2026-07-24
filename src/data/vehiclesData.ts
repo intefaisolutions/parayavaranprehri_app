@@ -1,7 +1,7 @@
 import { getMapTreeCount, MAP_TREES } from './mapTreesData';
 
 export type Vehicle = {
-  id: number;
+  id: string;
   name: string;
   plate: string;
   vhId: string;
@@ -16,7 +16,7 @@ export type Vehicle = {
 
 export const INITIAL_VEHICLES: Vehicle[] = [
   {
-    id: 1,
+    id: '1',
     name: 'Land Rover Defender 110',
     plate: 'MP09 CX 4521',
     vhId: 'VH-IND-2026-00045',
@@ -29,7 +29,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     iconUrl: 'https://img.icons8.com/color/96/suv.png',
   },
   {
-    id: 2,
+    id: '2',
     name: 'Mahindra Thar',
     plate: 'MP09 KK 8810',
     vhId: 'VH-IND-2026-00088',
@@ -49,6 +49,7 @@ const INITIAL_VEHICLE_TREES = INITIAL_VEHICLES.reduce(
 );
 
 export type AddedVehicle = {
+  id?: string;
   plate: string;
   name: string;
   vhId: string;
@@ -57,7 +58,7 @@ export type AddedVehicle = {
 
 export function createVehicleFromAdded(added: AddedVehicle): Vehicle {
   return {
-    id: Date.now(),
+    id: added.id ?? String(Date.now()),
     name: added.name,
     plate: added.plate,
     vhId: added.vhId,

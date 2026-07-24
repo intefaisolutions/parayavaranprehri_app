@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppIcon, { IconName } from './AppIcon';
 import { getBottomInset } from '../utils/layout';
 
@@ -25,8 +26,10 @@ const tabs: {
 ];
 
 export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
+  const insets = useSafeAreaInsets();
+  
   return (
-    <View style={styles.bottomNavContainer}>
+    <View style={[styles.bottomNavContainer, { bottom: Math.max(10, insets.bottom + 10) }]}>
       <View style={styles.bottomNav}>
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
@@ -58,7 +61,6 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
 const styles = StyleSheet.create({
   bottomNavContainer: {
     position: 'absolute',
-    bottom: getBottomInset(10),
     left: 20,
     right: 20,
     alignItems: 'center',

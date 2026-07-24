@@ -13,15 +13,12 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { api } from '../utils/api';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RootStackParamList } from '../navigation/types';
+import { ApiError, authService, saveSession } from '../api';
 
-type Props = {
-  phoneNumber: string;
-  onBack: () => void;
-  onVerify: (authData: any) => void;
-};
-
-const OTP_LENGTH = 6;
+const OTP_LENGTH = 4;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Precise colors matching LoginScreen
@@ -37,7 +34,10 @@ const COLORS = {
   error: '#d32f2f',
 };
 
-export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
+export default function OtpScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Otp'>>();
+  const { phoneNumber } = route.params;
   const [otp, setOtp] = useState('');
   const [touched, setTouched] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -62,23 +62,31 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
 
   const handleVerify = async () => {
     setTouched(true);
-    if (!isValid) return;
+    if (!isValid || loading) return;
 
-    let email = '';
-    if (phoneNumber === '9826012345') {
-      email = 'rahul@paryavaran.com';
-    } else {
-      setErrorMsg('This phone number is not associated with an account.');
-      return;
-    }
-
+    setLoading(true);
+    setErrorMsg('');
     try {
-      setLoading(true);
-      setErrorMsg('');
-      const data = await api.post('/auth/otp/verify', { email, code: otp });
-      onVerify(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Invalid or expired OTP.');
+      const result = await authService.verifyOtp({
+        phone: phoneNumber,
+        code: otp,
+      });
+      await saveSession({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        user: result.user,
+        phone: phoneNumber,
+      });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainLayout', params: { phoneNumber } }],
+      });
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Invalid OTP. Please try again.';
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -96,7 +104,7 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
 
       {/* BACK BUTTON (Absolute at top) */}
       <Pressable
-        onPress={onBack}
+        onPress={() => navigation.goBack()}
         style={[styles.backBtn, { top: getTopInset(20) }]}
       >
         <Text style={styles.backText}>← Back</Text>
@@ -160,31 +168,31 @@ export default function OtpScreen({ phoneNumber, onBack, onVerify }: Props) {
               disabled={!isValid || loading}
               style={({ pressed }) => [
                 styles.buttonOuter,
-                isValid && !loading && pressed && { opacity: 0.8 },
+                isValid && pressed && { opacity: 0.8 },
               ]}
             >
-              {isValid && !loading ? (
+              {isValid ? (
                 <LinearGradient
                   colors={[COLORS.gradientStart, COLORS.gradientEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
                   style={styles.buttonInner}
                 >
-                  <Text style={styles.buttonText}>Verify & Continue</Text>
-                </LinearGradient>
-              ) : (
-                <View style={[styles.buttonInner, styles.buttonDisabled]}>
                   {loading ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
+                    <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={styles.buttonText}>Verify & Continue</Text>
                   )}
+                </LinearGradient>
+              ) : (
+                <View style={[styles.buttonInner, styles.buttonDisabled]}>
+                  <Text style={styles.buttonText}>Verify & Continue</Text>
                 </View>
               )}
             </Pressable>
 
             <View style={styles.resendRow}>
-              <Pressable onPress={onBack}>
+              <Pressable onPress={() => navigation.goBack()}>
                 <Text style={styles.resendText}>Change number</Text>
               </Pressable>
             </View>

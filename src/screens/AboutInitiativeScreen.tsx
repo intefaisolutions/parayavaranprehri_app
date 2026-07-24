@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -14,6 +14,7 @@ import {
   PROFILE_TAGS,
 } from '../data/journeyData';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { ApiError, staticDataService } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -45,6 +46,33 @@ export default function AboutInitiativeScreen({
   onBack,
   onViewJourney,
 }: Props) {
+  const [aboutDescription, setAboutDescription] = useState(
+    'Every vehicle on our streets can become a force for nature.',
+  );
+  const [aboutBody, setAboutBody] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const info = await staticDataService.getInitiativeInfo();
+        if (!mounted || !info?.about) return;
+        if (info.about.vision) setAboutDescription(info.about.vision);
+        if (info.about.description) setAboutBody(info.about.description);
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError
+              ? error.message
+              : 'Failed to load initiative info',
+          );
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(10) }]}>
@@ -75,12 +103,12 @@ export default function AboutInitiativeScreen({
           style={styles.storyCard}>
           <Text style={styles.storyLabel}>OUR STORY</Text>
           <Text style={styles.storyHeading}>
-            Every vehicle on our streets can become a force for nature.
+            {aboutDescription ||
+              'Every vehicle on our streets can become a force for nature.'}
           </Text>
           <Text style={styles.storyBody}>
-            Paryavaran Prahri connects vehicle owners to a living tree, tracked
-            from sapling to canopy — turning daily mobility into measurable
-            environmental contribution.
+            {aboutBody ||
+              'Paryavaran Prahri connects vehicle owners to a living tree, tracked from sapling to canopy — turning daily mobility into measurable environmental contribution.'}
           </Text>
           <View style={styles.storyBadge}>
             <MaterialCommunityIcons name="heart-outline" size={14} color="#fff" />

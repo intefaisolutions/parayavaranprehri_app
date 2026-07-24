@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -14,6 +14,7 @@ import DateTimePicker, {
 import LinearGradient from 'react-native-linear-gradient';
 import { revealSacredTree, RevealedTree } from '../data/rashiVanData';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { ApiError, staticDataService, type StaticRashiItem } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -41,9 +42,55 @@ export default function RashiVanScreen({ onBack }: Props) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [revealed, setRevealed] = useState<RevealedTree | null>(null);
+  const [apiRashi, setApiRashi] = useState<StaticRashiItem[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await staticDataService.getRashiVan();
+        if (mounted && Array.isArray(data)) {
+          setApiRashi(data);
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError
+              ? error.message
+              : 'Failed to load rashi data',
+          );
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleReveal = () => {
-    setRevealed(revealSacredTree(birthDate));
+    const local = revealSacredTree(birthDate);
+    if (apiRashi.length > 0) {
+      const rashiName = local.rashi.name.toLowerCase();
+      const match =
+        apiRashi.find(item => item.rashi.toLowerCase().includes(rashiName)) ||
+        apiRashi.find(item =>
+          rashiName.includes(
+            item.rashi.split('(')[0].trim().toLowerCase(),
+          ),
+        );
+      if (match) {
+        setRevealed({
+          ...local,
+          tree: {
+            ...local.tree,
+            name: match.tree,
+            significance: match.benefits,
+          },
+        });
+        return;
+      }
+    }
+    setRevealed(local);
   };
 
   const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {

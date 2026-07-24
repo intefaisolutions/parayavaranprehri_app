@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +10,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon, { IconName } from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { api } from '../utils/api';
+import { ApiError, greenSelfiesService } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -24,40 +23,33 @@ const CATEGORIES = [
   'Paryavaran Mitra',
 ];
 
+/** Placeholder image URL — media upload API does not exist yet */
+const SELFIE_PLACEHOLDER_URL =
+  'https://via.placeholder.com/600x800.png?text=Green+Selfie';
+
 export default function GreenSelfieScreen({ onBack }: Props) {
   const [activeCategory, setActiveCategory] = useState('Eco Hero');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [selfies, setSelfies] = useState<any[]>([]);
-
-  const fetchSelfies = async () => {
-    try {
-      const data = await api.get<any[]>('/green-selfies');
-      setSelfies(data);
-    } catch (err) {
-      console.error('Error fetching green selfies:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchSelfies();
-  }, []);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
 
   const handleTakeSelfie = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setStatusMsg('');
     try {
-      setLoading(true);
-      setErrorMsg('');
-      await api.post('/green-selfies', {
-        imgUrl: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&q=80&w=400',
+      await greenSelfiesService.create({
         category: activeCategory,
-        location: 'Indore, Madhya Pradesh',
+        imageUrl: SELFIE_PLACEHOLDER_URL,
       });
-      fetchSelfies();
-      Alert.alert('Success', 'Green Selfie uploaded successfully!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to upload selfie.');
+      setStatusMsg('Green selfie saved successfully.');
+    } catch (error) {
+      setStatusMsg(
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to save green selfie',
+      );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -143,51 +135,23 @@ export default function GreenSelfieScreen({ onBack }: Props) {
         </View>
 
         <Pressable
-          style={[styles.takeSelfieBtnWrap, loading && { opacity: 0.7 }]}
+          style={styles.takeSelfieBtnWrap}
           onPress={handleTakeSelfie}
-          disabled={loading}
-        >
+          disabled={submitting}>
           <LinearGradient
             colors={['#7dd3a0', '#44b969']}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.takeSelfieBtn}>
-            {loading ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.takeSelfieBtnText}>📷  Take Selfie</Text>
             )}
           </LinearGradient>
         </Pressable>
-
-        {errorMsg ? (
-          <Text style={{ color: '#d32f2f', fontSize: 13, marginTop: 8, textAlign: 'center' }}>
-            {errorMsg}
-          </Text>
-        ) : null}
-
-        {/* Gallery / Feed Section */}
-        {selfies.length > 0 ? (
-          <View style={{ marginTop: 24 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: '#0a3617', marginBottom: 12 }}>
-              Recent Green Selfies
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-              {selfies.map((selfie: any) => (
-                <View key={selfie._id || selfie.id} style={{ width: '47%', backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', padding: 12, borderWidth: 1, borderColor: '#e5e7eb' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#126e35', textTransform: 'uppercase', marginBottom: 2 }}>
-                    {selfie.category}
-                  </Text>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#4b5563', marginBottom: 4 }}>
-                    📍 {selfie.location}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: '#9ca3af' }}>
-                    {selfie.createdAt ? new Date(selfie.createdAt).toLocaleDateString() : 'Just now'}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
+        {statusMsg ? (
+          <Text style={styles.statusMsg}>{statusMsg}</Text>
         ) : null}
       </ScrollView>
     </View>
@@ -345,5 +309,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
+  },
+  statusMsg: {
+    marginTop: 12,
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#126e35',
   },
 });

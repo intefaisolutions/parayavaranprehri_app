@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,13 +8,61 @@ import {
   View,
 } from 'react-native';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { NEWS_ITEMS, TAG_STYLES } from '../data/newsData';
+import { NEWS_ITEMS, NewsItem, TAG_STYLES, NewsTag } from '../data/newsData';
+import { ApiError, staticDataService, type StaticNewsItem } from '../api';
 
 type Props = {
   onBack: () => void;
 };
 
+function mapStaticNews(items: StaticNewsItem[]): NewsItem[] {
+  const tags: NewsTag[] = [
+    'Mission 2047',
+    'Plantation',
+    'Government',
+    'Environment',
+    'Media',
+  ];
+  return items.map((item, index) => ({
+    id: String(item.id),
+    icon: '🌱',
+    tag: tags[index % tags.length],
+    timeAgo: item.date,
+    title: item.title,
+    description: item.content,
+  }));
+}
+
 export default function NewsScreen({ onBack }: Props) {
+  const [items, setItems] = useState<NewsItem[]>(NEWS_ITEMS);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await staticDataService.getNews();
+        if (mounted && Array.isArray(data) && data.length > 0) {
+          setItems(mapStaticNews(data));
+        }
+      } catch (error) {
+        if (mounted) {
+          setErrorMsg(
+            error instanceof ApiError
+              ? error.message
+              : 'Failed to load news',
+          );
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(10) }]}>
@@ -31,38 +80,45 @@ export default function NewsScreen({ onBack }: Props) {
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: getBottomInset(32) },
-        ]}
-        showsVerticalScrollIndicator={false}>
-        <Text style={styles.statusLabel}>Admin Managed · Coming soon</Text>
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#136e35" />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: getBottomInset(32) },
+          ]}
+          showsVerticalScrollIndicator={false}>
+          <Text style={styles.statusLabel}>Admin Managed · Coming soon</Text>
+          {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : null}
 
-        {NEWS_ITEMS.map(item => {
-          const tagStyle = TAG_STYLES[item.tag];
-          return (
-            <View key={item.id} style={styles.newsCard}>
-              <View style={styles.iconCircle}>
-                <Text style={styles.iconEmoji}>{item.icon}</Text>
-              </View>
-              <View style={styles.cardContent}>
-                <View style={styles.cardTopRow}>
-                  <View
-                    style={[styles.tag, { backgroundColor: tagStyle.bg }]}>
-                    <Text style={[styles.tagText, { color: tagStyle.text }]}>
-                      {item.tag}
-                    </Text>
-                  </View>
-                  <Text style={styles.timeAgo}>{item.timeAgo}</Text>
+          {items.map(item => {
+            const tagStyle = TAG_STYLES[item.tag];
+            return (
+              <View key={item.id} style={styles.newsCard}>
+                <View style={styles.iconCircle}>
+                  <Text style={styles.iconEmoji}>{item.icon}</Text>
                 </View>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardDescription}>{item.description}</Text>
+                <View style={styles.cardContent}>
+                  <View style={styles.cardTopRow}>
+                    <View
+                      style={[styles.tag, { backgroundColor: tagStyle.bg }]}>
+                      <Text style={[styles.tagText, { color: tagStyle.text }]}>
+                        {item.tag}
+                      </Text>
+                    </View>
+                    <Text style={styles.timeAgo}>{item.timeAgo}</Text>
+                  </View>
+                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={styles.cardDescription}>{item.description}</Text>
+                </View>
               </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+            );
+          })}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -112,37 +168,32 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   scrollContent: {
-    padding: 20,
+    padding: 16,
+    gap: 12,
   },
   statusLabel: {
     fontSize: 12,
+    color: '#9ca3af',
     fontWeight: '600',
-    color: '#0d9488',
-    marginBottom: 16,
+    marginBottom: 4,
   },
   newsCard: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
   },
   iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#e8f5e9',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#ecfdf5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
   },
   iconEmoji: {
-    fontSize: 22,
+    fontSize: 20,
   },
   cardContent: {
     flex: 1,
@@ -151,12 +202,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   tag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   tagText: {
     fontSize: 11,
@@ -167,15 +218,24 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0a3617',
-    lineHeight: 21,
-    marginBottom: 6,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
   },
   cardDescription: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#6b7280',
-    lineHeight: 19,
+    lineHeight: 18,
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    color: '#d32f2f',
+    fontSize: 12,
+    marginBottom: 8,
   },
 });

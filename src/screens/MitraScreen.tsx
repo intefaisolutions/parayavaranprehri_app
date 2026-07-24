@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { ApiError, mitrasService, staticDataService } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -40,18 +42,69 @@ export default function MitraScreen({ onBack }: Props) {
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [cardData, setCardData] = useState<MitraFormData | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleGenerate = () => {
-    setCardData({
-      name: name.trim() || 'Rahul Sharma',
-      profession: profession.trim(),
-      address: address.trim(),
-      mobile: mobile.trim() || '9826012345',
-      email: email.trim() || 'rahul@email.com',
-      membership,
-      mitraId: generateMitraId(),
-    });
-    setStep('card');
+  const handleGenerate = async () => {
+    if (submitting) return;
+
+    const formName = name.trim() || 'Rahul Sharma';
+    const formMobile = mobile.trim() || '9826012345';
+    const formEmail = email.trim() || 'rahul@email.com';
+    const formProfession = profession.trim();
+    const formAddress = address.trim();
+
+    setSubmitting(true);
+    setErrorMsg('');
+    try {
+      const created = (await mitrasService.create({
+        name: formName,
+        mobile: formMobile,
+        email: formEmail,
+        profession: formProfession || undefined,
+        address: formAddress || undefined,
+        membership,
+      })) as { mitraId?: string; id?: string };
+
+      setCardData({
+        name: formName,
+        profession: formProfession,
+        address: formAddress,
+        mobile: formMobile,
+        email: formEmail,
+        membership,
+        mitraId: created.mitraId || created.id || generateMitraId(),
+      });
+      setStep('card');
+    } catch (createError) {
+      // Citizen users may lack mitras:create — fall back to static card data
+      try {
+        const card = await staticDataService.getMitraCard();
+        setCardData({
+          name: formName || card.name,
+          profession: formProfession || card.role,
+          address: formAddress,
+          mobile: formMobile,
+          email: formEmail,
+          membership,
+          mitraId: card.id || generateMitraId(),
+        });
+        setStep('card');
+        setErrorMsg(
+          createError instanceof ApiError
+            ? `${createError.message} Showing preview card.`
+            : 'Showing preview card.',
+        );
+      } catch {
+        setErrorMsg(
+          createError instanceof ApiError
+            ? createError.message
+            : 'Failed to register as Mitra',
+        );
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBack = () => {
@@ -81,7 +134,7 @@ export default function MitraScreen({ onBack }: Props) {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
@@ -166,17 +219,27 @@ export default function MitraScreen({ onBack }: Props) {
                   autoCapitalize="none"
                 />
 
-                <Pressable style={styles.generateBtnWrap} onPress={handleGenerate}>
+                <Pressable
+                  style={styles.generateBtnWrap}
+                  onPress={handleGenerate}
+                  disabled={submitting}>
                   <LinearGradient
                     colors={['#0c4820', '#2b964f']}
                     start={{ x: 0, y: 0.5 }}
                     end={{ x: 1, y: 0.5 }}
                     style={styles.generateBtn}>
-                    <Text style={styles.generateBtnText}>
-                      Generate Digital Visiting Card
-                    </Text>
+                    {submitting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.generateBtnText}>
+                        Generate Digital Visiting Card
+                      </Text>
+                    )}
                   </LinearGradient>
                 </Pressable>
+                {errorMsg ? (
+                  <Text style={styles.errorText}>{errorMsg}</Text>
+                ) : null}
               </View>
             </>
           ) : (
@@ -391,6 +454,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '800',
+  },
+  errorText: {
+    color: '#d32f2f',
+    fontSize: 12,
+    marginTop: 10,
+    textAlign: 'center',
   },
   visitingCardBorder: {
     borderRadius: 24,

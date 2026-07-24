@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -9,8 +9,9 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon, { IconName } from '../components/AppIcon';
-import { MAP_TREES, MapTreeType } from '../data/mapTreesData';
+import { MAP_TREES, MapTree, MapTreeType } from '../data/mapTreesData';
 import { getTopInset } from '../utils/layout';
+import { ApiError, treesService, type ApiTree } from '../api';
 
 const { width } = Dimensions.get('window');
 
@@ -53,6 +54,50 @@ const TREE_STYLE: Record<
 const PIN_SIZE = 52;
 const PIN_INNER = 34;
 
+function normalizeTreeType(species?: string, treeName?: string): MapTreeType {
+  const value = `${species ?? ''} ${treeName ?? ''}`.toLowerCase();
+  if (value.includes('neem')) return 'Neem';
+  if (value.includes('banyan') || value.includes('bargad')) return 'Banyan';
+  if (value.includes('mango') || value.includes('aam')) return 'Mango';
+  return 'Peepal';
+}
+
+function mapApiTreesToPins(trees: ApiTree[]): MapTree[] {
+  const withCoords = trees.filter(
+    t => typeof t.latitude === 'number' && typeof t.longitude === 'number',
+  );
+  if (withCoords.length === 0) {
+    return trees.slice(0, MAP_TREES.length).map((tree, index) => ({
+      id: index + 1,
+      type: normalizeTreeType(tree.species, tree.treeName),
+      top: MAP_TREES[index % MAP_TREES.length].top,
+      left: MAP_TREES[index % MAP_TREES.length].left,
+      zIndex: MAP_TREES[index % MAP_TREES.length].zIndex,
+    }));
+  }
+
+  const lats = withCoords.map(t => t.latitude as number);
+  const lngs = withCoords.map(t => t.longitude as number);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const latSpan = Math.max(maxLat - minLat, 0.0001);
+  const lngSpan = Math.max(maxLng - minLng, 0.0001);
+
+  return withCoords.map((tree, index) => {
+    const lat = tree.latitude as number;
+    const lng = tree.longitude as number;
+    return {
+      id: index + 1,
+      type: normalizeTreeType(tree.species, tree.treeName),
+      top: 100 + ((maxLat - lat) / latSpan) * 360,
+      left: 20 + ((lng - minLng) / lngSpan) * (width - 80),
+      zIndex: 2,
+    };
+  });
+}
+
 function TreeMapPin({ type }: { type: MapTreeType }) {
   const style = TREE_STYLE[type];
 
@@ -70,8 +115,30 @@ function TreeMapPin({ type }: { type: MapTreeType }) {
 
 export default function MapScreen() {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [trees, setTrees] = useState<MapTree[]>(MAP_TREES);
 
-  const filteredTrees = MAP_TREES.filter(
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const apiTrees = await treesService.list();
+        if (mounted && Array.isArray(apiTrees) && apiTrees.length > 0) {
+          setTrees(mapApiTreesToPins(apiTrees));
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError ? error.message : 'Failed to load trees',
+          );
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const filteredTrees = trees.filter(
     tree => activeFilter === 'All' || tree.type === activeFilter,
   );
 

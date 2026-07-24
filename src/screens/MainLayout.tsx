@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { api } from '../utils/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, StyleSheet, BackHandler, ActivityIndicator, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DashboardScreen from './DashboardScreen';
 import VehiclesScreen from './VehiclesScreen';
 import ProfileScreen from './ProfileScreen';
@@ -14,6 +14,7 @@ import RashiVanScreen from './RashiVanScreen';
 import NewsScreen from './NewsScreen';
 import SupportScreen from './SupportScreen';
 import MitraScreen from './MitraScreen';
+import MitraDashboardScreen from './MitraDashboardScreen';
 import OfferLandScreen from './OfferLandScreen';
 import AboutInitiativeScreen from './AboutInitiativeScreen';
 import AdminPreviewScreen from './AdminPreviewScreen';
@@ -22,14 +23,19 @@ import BottomNav from '../components/BottomNav';
 import {
   AddedVehicle,
   createVehicleFromAdded,
-  INITIAL_VEHICLES,
   Vehicle,
 } from '../data/vehiclesData';
-
-interface MainLayoutProps {
-  user?: any;
-  onLogout: () => void;
-}
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { RootStackParamList } from '../navigation/types';
+import {
+  ApiError,
+  authService,
+  clearSession,
+  getRefreshToken,
+  vehiclesService,
+} from '../api';
+import { mapApiVehicleToUi } from '../api/mappers';
 
 type Tab = 'home' | 'vehicles' | 'map' | 'ranks' | 'profile';
 
@@ -47,44 +53,62 @@ type OverlayScreen =
   | 'adminPreview'
   | 'vehicleDetail';
 
-const mapBackendVehicle = (v: any): Vehicle => ({
-  id: v._id || v.id,
-  name: v.name,
-  plate: v.plate,
-  vhId: v.vhId,
-  fuel: v.fuel || 'Diesel',
-  regDate: v.createdAt
-    ? new Date(v.createdAt).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '12 Aug 2024',
-  trees: 3,
-  co2: 45,
-  survival: '100%',
-  status: 'Active',
-  iconUrl: 'https://img.icons8.com/color/96/suv.png',
-});
-
-export default function MainLayout({ user, onLogout }: MainLayoutProps) {
+export default function MainLayout() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [overlay, setOverlay] = useState<OverlayScreen | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [loadingVehicles, setLoadingVehicles] = useState(true);
+  const [vehiclesError, setVehiclesError] = useState('');
 
-  const fetchVehicles = async () => {
+  const route = useRoute<RouteProp<RootStackParamList, 'MainLayout'>>();
+  const phoneNumber = route.params?.phoneNumber;
+  const isMitra = phoneNumber === '8817678133';
+
+  const insets = useSafeAreaInsets();
+
+  const loadVehicles = useCallback(async () => {
+    setLoadingVehicles(true);
+    setVehiclesError('');
     try {
-      const data = await api.get<any[]>('/vehicles');
-      setVehicles(data.map(mapBackendVehicle));
+      const list = await vehiclesService.list();
+      setVehicles(list.map(mapApiVehicleToUi));
     } catch (error) {
-      console.error('Error fetching vehicles:', error);
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to load vehicles';
+      setVehiclesError(message);
+      setVehicles([]);
+    } finally {
+      setLoadingVehicles(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchVehicles();
-  }, []);
+    loadVehicles();
+  }, [loadVehicles]);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      if (overlay) {
+        closeOverlay();
+        return true;
+      }
+      if (activeTab !== 'home') {
+        setActiveTab('home');
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress,
+    );
+    return () => subscription.remove();
+  }, [overlay, activeTab]);
 
   const closeOverlay = () => {
     setOverlay(null);
@@ -97,22 +121,58 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
   };
 
   const registerVehicle = (added: AddedVehicle) => {
-    // Vehicles are now added via AddVehicleScreen calling POST /vehicles
-    fetchVehicles();
+    setVehicles(prev => {
+      const normalized = added.plate.replace(/\s/g, '').toUpperCase();
+      const exists = prev.some(
+        v => v.plate.replace(/\s/g, '').toUpperCase() === normalized,
+      );
+      if (exists) {
+        return prev;
+      }
+      return [...prev, createVehicleFromAdded(added)];
+    });
   };
 
   const handleAddVehicleComplete = () => {
     closeOverlay();
-    fetchVehicles();
     setActiveTab('vehicles');
+    loadVehicles();
+  };
+
+  const handleLogout = async () => {
+    try {
+      const refreshToken = await getRefreshToken();
+      if (refreshToken) {
+        await authService.logout(refreshToken);
+      }
+    } catch {
+      // Clear local session even if logout API fails
+    } finally {
+      await clearSession();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    }
   };
 
   const renderScreen = () => {
+    if (loadingVehicles && activeTab === 'vehicles') {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#136e35" />
+          <Text style={styles.loadingText}>Loading vehicles…</Text>
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case 'home':
+        if (isMitra) {
+          return <MitraDashboardScreen onLogout={handleLogout} />;
+        }
         return (
           <DashboardScreen
-            user={user}
             vehicles={vehicles}
             onViewJourney={() => setOverlay('journey')}
             onAddVehicle={openAddVehicle}
@@ -142,9 +202,8 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
       case 'profile':
         return (
           <ProfileScreen
-            user={user}
             vehicles={vehicles}
-            onLogout={onLogout}
+            onLogout={handleLogout}
             onMyVehicles={() => setActiveTab('vehicles')}
             onVehicleIdentity={() => setOverlay('identity')}
             onRashiVan={() => setOverlay('rashiVan')}
@@ -154,7 +213,6 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
       default:
         return (
           <DashboardScreen
-            user={user}
             vehicles={vehicles}
             onViewJourney={() => setOverlay('journey')}
             onAddVehicle={openAddVehicle}
@@ -220,11 +278,20 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
   };
 
   if (overlay) {
-    return <View style={styles.root}>{renderOverlay()}</View>;
+    return (
+      <View style={[styles.root, { paddingBottom: insets.bottom }]}>
+        {renderOverlay()}
+      </View>
+    );
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingBottom: insets.bottom }]}>
+      {vehiclesError && activeTab === 'home' ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>{vehiclesError}</Text>
+        </View>
+      ) : null}
       {renderScreen()}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </View>
@@ -235,5 +302,25 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f4f9f4',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: '#6b7280',
+    fontSize: 14,
+  },
+  banner: {
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  bannerText: {
+    color: '#b91c1c',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

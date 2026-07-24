@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,6 +10,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { ApiError, staticDataService } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -38,6 +41,44 @@ const FAQ_ITEMS = [
 export default function SupportScreen({ onBack }: Props) {
   const [activeTab, setActiveTab] = useState<SupportTab>('prahri');
   const [expandedFaq, setExpandedFaq] = useState<string | null>('3');
+  const [phone, setPhone] = useState('+911234567890');
+  const [email, setEmail] = useState('support@paryavaranprahri.in');
+  const [faqItems, setFaqItems] = useState(FAQ_ITEMS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const info = await staticDataService.getInitiativeInfo();
+        if (!mounted || !info?.support) return;
+        if (info.support.phone) setPhone(info.support.phone);
+        if (info.support.email) setEmail(info.support.email);
+        if (Array.isArray(info.support.faq) && info.support.faq.length > 0) {
+          setFaqItems(
+            info.support.faq.map((item, index) => ({
+              id: String(index + 1),
+              question: item.question,
+              answer: item.answer,
+            })),
+          );
+          setExpandedFaq('1');
+        }
+      } catch (error) {
+        // Keep local FAQ/contacts if API fails
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError ? error.message : 'Support load failed',
+          );
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const toggleFaq = (id: string) => {
     setExpandedFaq(prev => (prev === id ? null : id));
@@ -58,6 +99,11 @@ export default function SupportScreen({ onBack }: Props) {
         </Pressable>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#136e35" />
+        </View>
+      ) : (
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -105,15 +151,17 @@ export default function SupportScreen({ onBack }: Props) {
           </Pressable>
         </View>
 
-        <View style={styles.contactCard}>
+        <Pressable
+          style={styles.contactCard}
+          onPress={() => Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`)}>
           <View style={[styles.contactIcon, styles.contactIconGreen]}>
             <Text style={styles.contactIconText}>📞</Text>
           </View>
           <View style={styles.contactInfo}>
             <Text style={styles.contactTitle}>Call Now</Text>
-            <Text style={styles.contactSub}>+911234567890</Text>
+            <Text style={styles.contactSub}>{phone}</Text>
           </View>
-        </View>
+        </Pressable>
 
         <View style={styles.contactCard}>
           <View style={[styles.contactIcon, styles.contactIconGreen]}>
@@ -125,19 +173,21 @@ export default function SupportScreen({ onBack }: Props) {
           </View>
         </View>
 
-        <View style={styles.contactCard}>
+        <Pressable
+          style={styles.contactCard}
+          onPress={() => Linking.openURL(`mailto:${email}`)}>
           <View style={[styles.contactIcon, styles.contactIconOrange]}>
             <Text style={styles.contactIconText}>✉️</Text>
           </View>
           <View style={styles.contactInfo}>
             <Text style={styles.contactTitle}>Email</Text>
-            <Text style={styles.contactSub}>support@paryavaranprahri.in</Text>
+            <Text style={styles.contactSub}>{email}</Text>
           </View>
-        </View>
+        </Pressable>
 
         <Text style={styles.faqTitle}>Frequently Asked</Text>
 
-        {FAQ_ITEMS.map(item => {
+        {faqItems.map(item => {
           const isExpanded = expandedFaq === item.id;
           return (
             <Pressable
@@ -155,6 +205,7 @@ export default function SupportScreen({ onBack }: Props) {
           );
         })}
       </ScrollView>
+      )}
     </View>
   );
 }
@@ -163,6 +214,11 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f4f9f4',
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',
