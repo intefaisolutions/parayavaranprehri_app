@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Dimensions,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -15,6 +16,17 @@ import LinearGradient from 'react-native-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import {
+  ApiError,
+  certificatesService,
+  getStoredPhone,
+  mitrasService,
+  staticDataService,
+  tasksService,
+  treesService,
+  unwrapList,
+  type TaskItem,
+} from '../api';
 
 const { width } = Dimensions.get('window');
 
@@ -34,11 +46,56 @@ const TREES = [
 ];
 
 const INITIAL_TASKS = [
-  { id: 1, title: 'Verify 5 trees in Sector 4', assigned: '2026-06-25', due: '2026-07-05', priority: 'High', priorityBg: '#ffedd5', priorityColor: '#ea580c', progress: 40, status: 'pending' },
-  { id: 2, title: 'Weekly watering round', assigned: '2026-06-28', due: '2026-07-02', priority: 'Medium', priorityBg: '#fef08a', priorityColor: '#a16207', progress: 0, status: 'pending' },
-  { id: 3, title: 'Health check - Banyan grove', assigned: '2026-06-20', due: '2026-06-30', priority: 'Critical', priorityBg: '#ffe4e6', priorityColor: '#e11d48', progress: 75, status: 'pending' },
-  { id: 4, title: 'Plantation monitoring - Zone A', assigned: '2026-06-15', due: '2026-06-28', priority: 'Low', priorityBg: '#dcfce7', priorityColor: '#059669', progress: 100, status: 'completed' },
+  { id: 1, title: 'Verify 5 trees in Sector 4', assigned: '2026-06-25', due: '2026-07-05', priority: 'High', priorityBg: '#ffedd5', priorityColor: '#ea580c', progress: 40, status: 'pending', apiId: '' },
+  { id: 2, title: 'Weekly watering round', assigned: '2026-06-28', due: '2026-07-02', priority: 'Medium', priorityBg: '#fef08a', priorityColor: '#a16207', progress: 0, status: 'pending', apiId: '' },
+  { id: 3, title: 'Health check - Banyan grove', assigned: '2026-06-20', due: '2026-06-30', priority: 'Critical', priorityBg: '#ffe4e6', priorityColor: '#e11d48', progress: 75, status: 'pending', apiId: '' },
+  { id: 4, title: 'Plantation monitoring - Zone A', assigned: '2026-06-15', due: '2026-06-28', priority: 'Low', priorityBg: '#dcfce7', priorityColor: '#059669', progress: 100, status: 'completed', apiId: '' },
 ];
+
+function priorityStyle(priority?: string) {
+  const p = (priority || 'Medium').toLowerCase();
+  if (p === 'high') return { priorityBg: '#ffedd5', priorityColor: '#ea580c' };
+  if (p === 'low') return { priorityBg: '#dcfce7', priorityColor: '#059669' };
+  return { priorityBg: '#fef08a', priorityColor: '#a16207' };
+}
+
+function mapTaskStatus(status?: string) {
+  if (status === 'Completed') return 'completed';
+  if (status === 'In Progress') return 'progress';
+  return 'pending';
+}
+
+function mapApiTasks(items: TaskItem[]) {
+  return items.map((item, index) => ({
+    id: index + 1,
+    apiId: item._id,
+    title: item.taskTitle,
+    assigned: item.createdAt
+      ? new Date(item.createdAt).toISOString().slice(0, 10)
+      : '',
+    due: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 10) : '',
+    priority: item.priority || 'Medium',
+    ...priorityStyle(item.priority),
+    progress:
+      item.status === 'Completed' ? 100 : item.status === 'In Progress' ? 40 : 0,
+    status: mapTaskStatus(item.status),
+  }));
+}
+
+function mapApiTrees(apiTrees: any[]) {
+  const colors = [
+    { color: '#bbf7d0', textColor: '#16a34a' },
+    { color: '#dcfce7', textColor: '#22c55e' },
+    { color: '#fef08a', textColor: '#ca8a04' },
+    { color: '#ffedd5', textColor: '#ea580c' },
+  ];
+  return apiTrees.map((tree, index) => ({
+    id: tree.treeId || tree._id || `T-${index + 1}`,
+    name: tree.species || tree.treeName || 'Tree',
+    status: tree.status || 'Good',
+    ...colors[index % colors.length],
+  }));
+}
 
 const ACTIVITY_TYPES = [
   'Watering',
@@ -123,16 +180,123 @@ const CERTIFICATES = [
 
 export default function MitraDashboardScreen({ onLogout }: Props) {
   const [activeTab, setActiveTab] = useState('Overview');
-
-  // Tasks State
+  const [trees, setTrees] = useState(TREES);
   const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const [certificates, setCertificates] = useState(CERTIFICATES);
+  const [mitraName, setMitraName] = useState('Goutam Yadav');
+  const [mitraCode, setMitraCode] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyResult, setVerifyResult] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
-  const handleStartTask = (taskId: number) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'progress' } : t));
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const phone = await getStoredPhone();
+      try {
+        if (phone) {
+          const mitra = (await mitrasService.getByMobile(phone)) as any;
+          if (mounted && mitra) {
+            setMitraName(mitra.name || mitraName);
+            setMitraCode(mitra.mitraId || '');
+            if (mitra.mitraId) {
+              try {
+                const certs = await certificatesService.listByMitra(mitra.mitraId);
+                const list = Array.isArray(certs) ? certs : [];
+                if (mounted && list.length > 0) {
+                  setCertificates(
+                    list.map((c: any, i: number) => ({
+                      id: c._id || String(i + 1),
+                      title: c.title || 'Certificate',
+                      subtitle:
+                        c.description ||
+                        c.eventName ||
+                        'Official recognition',
+                      code: c.verificationCode || c.code || '',
+                      recipientName: c.recipientName || '',
+                    })),
+                  );
+                }
+              } catch {
+                // certificates permission may block
+              }
+            }
+          }
+        }
+      } catch {
+        // keep defaults
+      }
+
+      try {
+        const apiTrees = await treesService.list();
+        if (mounted && Array.isArray(apiTrees) && apiTrees.length > 0) {
+          setTrees(mapApiTrees(apiTrees));
+        }
+      } catch {
+        // keep mock trees
+      }
+
+      try {
+        const apiTasks = await tasksService.list({ page: 1, limit: 50 });
+        const list = unwrapList(apiTasks);
+        if (mounted && list.length > 0) {
+          setTasks(mapApiTasks(list));
+        }
+      } catch {
+        // keep mock tasks
+      }
+
+      try {
+        await staticDataService.getGamification();
+      } catch {
+        // optional leaderboard source
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleStartTask = async (taskId: number) => {
+    const task = tasks.find(t => t.id === taskId);
+    setTasks(prev =>
+      prev.map(t =>
+        t.id === taskId ? { ...t, status: 'progress', progress: 40 } : t,
+      ),
+    );
+    if (task?.apiId) {
+      try {
+        await tasksService.updateStatus(task.apiId, 'In Progress');
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError ? error.message : 'Task update failed',
+          );
+        }
+      }
+    }
   };
 
-  const handleCompleteTask = (taskId: number) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'completed', progress: 100 } : t));
+  const handleCompleteTask = async (taskId: number) => {
+    const task = tasks.find(t => t.id === taskId);
+    setTasks(prev =>
+      prev.map(t =>
+        t.id === taskId
+          ? { ...t, status: 'completed', progress: 100 }
+          : t,
+      ),
+    );
+    if (task?.apiId) {
+      try {
+        await tasksService.updateStatus(task.apiId, 'Completed');
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError ? error.message : 'Task update failed',
+          );
+        }
+      }
+    }
   };
 
   // Maintenance Form State
@@ -215,7 +379,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
                 <Text style={styles.avatarText}>GY</Text>
               </View>
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>Goutam Yadav</Text>
+                <Text style={styles.profileName}>{mitraName}</Text>
                 <Text style={styles.profileRole}>Farmer</Text>
                 <Text style={styles.profileId}>PM-IND-RAU-0112</Text>
               </View>
@@ -404,7 +568,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
               <Text style={styles.cardSectionTitle}>Trees Under Your Care</Text>
 
               <View style={styles.treeList}>
-                {TREES.map((tree, index) => (
+                {trees.map((tree, index) => (
                   <View key={index} style={styles.treeRow}>
                     <View style={styles.treeLeft}>
                       <AppIcon name="leaf" size={16} color="#059669" />
@@ -505,14 +669,14 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
                     onPress={() => setDropdownType(dropdownType === 'tree' ? null : 'tree')}
                   >
                     <Text style={styles.dropdownText} numberOfLines={1}>
-                      {selectedTree} · {TREES.find(t => t.id === selectedTree)?.name}
+                      {selectedTree} · {trees.find(t => t.id === selectedTree)?.name}
                     </Text>
                     <AppIcon name={dropdownType === 'tree' ? 'chevron-up' : 'chevron-down'} size={16} color={dropdownType === 'tree' ? '#059669' : '#6b7280'} />
                   </Pressable>
 
                   {dropdownType === 'tree' && (
                     <View style={styles.floatingDropdown}>
-                      {TREES.map((tree) => {
+                      {trees.map((tree) => {
                         const isSelected = selectedTree === tree.id;
                         return (
                           <Pressable
@@ -848,11 +1012,57 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
         {/* TAB CONTENT (CERTIFICATES) */}
         {activeTab === 'Certificates' && (
           <View style={styles.tabContent}>
-            {CERTIFICATES.map((cert) => (
-              <View key={cert.id} style={styles.taskCard}>
+            <View style={styles.verifyBox}>
+              <Text style={styles.verifyTitle}>Verify certificate</Text>
+              <TextInput
+                style={styles.verifyInput}
+                value={verifyCode}
+                onChangeText={setVerifyCode}
+                placeholder="Enter verification code"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="characters"
+              />
+              <Pressable
+                style={styles.verifyBtn}
+                disabled={verifying || !verifyCode.trim()}
+                onPress={async () => {
+                  setVerifying(true);
+                  setVerifyResult('');
+                  try {
+                    const res: any = await certificatesService.verify(
+                      verifyCode.trim(),
+                    );
+                    setVerifyResult(
+                      res?.title
+                        ? `Valid ✓ — ${res.title}${
+                            res.recipientName ? ` · ${res.recipientName}` : ''
+                          }`
+                        : 'Certificate is valid ✓',
+                    );
+                  } catch (error) {
+                    setVerifyResult(
+                      error instanceof ApiError
+                        ? error.message
+                        : 'Invalid or unknown certificate code',
+                    );
+                  } finally {
+                    setVerifying(false);
+                  }
+                }}>
+                <Text style={styles.verifyBtnText}>
+                  {verifying ? 'Checking…' : 'Verify'}
+                </Text>
+              </Pressable>
+              {verifyResult ? (
+                <Text style={styles.verifyResult}>{verifyResult}</Text>
+              ) : null}
+            </View>
 
+            {certificates.map(cert => (
+              <View key={cert.id} style={styles.taskCard}>
                 <View style={[styles.taskHeaderRow, { marginBottom: 16 }]}>
-                  <View style={[styles.taskIconBg, { backgroundColor: '#fef3c7' }]}>
+                  <View
+                    style={[styles.taskIconBg, { backgroundColor: '#fef3c7' }]}>
                     <AppIcon name="ribbon" size={20} color="#d97706" />
                   </View>
                   <View style={styles.taskTitleCol}>
@@ -861,18 +1071,62 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
                   </View>
                 </View>
 
-                {/* Action Buttons */}
                 <View style={styles.taskActionRow}>
-                  <Pressable style={[styles.taskBtn, styles.taskBtnStart]}>
-                    <AppIcon name="download-outline" size={16} color="#fff" />
-                    <Text style={styles.taskBtnText}>Download</Text>
+                  <Pressable
+                    style={[styles.taskBtn, styles.taskBtnStart]}
+                    onPress={() => {
+                      const code = (cert as any).code;
+                      if (code) {
+                        setVerifyCode(code);
+                        setActiveTab('Certificates');
+                        Alert.alert(
+                          'Verification code',
+                          code,
+                          [{ text: 'OK' }],
+                        );
+                      } else {
+                        Alert.alert(
+                          'No code',
+                          'This certificate has no verification code yet.',
+                        );
+                      }
+                    }}>
+                    <AppIcon name="shield-check-outline" size={16} color="#fff" />
+                    <Text style={styles.taskBtnText}>Verify</Text>
                   </Pressable>
 
-                  <Pressable style={[styles.taskBtn, styles.taskBtnOutline, { borderColor: '#e5e7eb' }]}>
-                    <Text style={[styles.taskBtnOutlineText, { color: '#111827' }]}>Share</Text>
+                  <Pressable
+                    style={[
+                      styles.taskBtn,
+                      styles.taskBtnOutline,
+                      { borderColor: '#e5e7eb' },
+                    ]}
+                    onPress={async () => {
+                      const text = encodeURIComponent(
+                        `Paryavaran Prahri Certificate\n${cert.title}\n${cert.subtitle}${
+                          (cert as any).code
+                            ? `\nCode: ${(cert as any).code}`
+                            : ''
+                        }\nVerify: /api/v1/certificates/verify/${
+                          (cert as any).code || ''
+                        }`,
+                      );
+                      const url = `https://wa.me/?text=${text}`;
+                      try {
+                        await Linking.openURL(url);
+                      } catch {
+                        Alert.alert(
+                          'Share failed',
+                          'Could not open WhatsApp on this device.',
+                        );
+                      }
+                    }}>
+                    <Text
+                      style={[styles.taskBtnOutlineText, { color: '#111827' }]}>
+                      Share WhatsApp
+                    </Text>
                   </Pressable>
                 </View>
-
               </View>
             ))}
           </View>
@@ -1532,5 +1786,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
   },
-
+  verifyBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e8eee9',
+  },
+  verifyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0a3617',
+    marginBottom: 10,
+  },
+  verifyInput: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#111827',
+    marginBottom: 10,
+    backgroundColor: '#f9fafb',
+  },
+  verifyBtn: {
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#126e35',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifyBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  verifyResult: {
+    marginTop: 10,
+    fontSize: 13,
+    color: '#0f766e',
+    lineHeight: 18,
+  },
 });

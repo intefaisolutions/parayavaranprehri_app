@@ -9,7 +9,14 @@ import {
 } from 'react-native';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { NEWS_ITEMS, NewsItem, TAG_STYLES, NewsTag } from '../data/newsData';
-import { ApiError, staticDataService, type StaticNewsItem } from '../api';
+import {
+  ApiError,
+  newsService,
+  staticDataService,
+  unwrapList,
+  type NewsItemApi,
+  type StaticNewsItem,
+} from '../api';
 
 type Props = {
   onBack: () => void;
@@ -33,6 +40,27 @@ function mapStaticNews(items: StaticNewsItem[]): NewsItem[] {
   }));
 }
 
+function mapApiNews(items: NewsItemApi[]): NewsItem[] {
+  const tagMap: Record<string, NewsTag> = {
+    Environment: 'Environment',
+    Events: 'Mission 2047',
+    Government: 'Government',
+    Awareness: 'Media',
+  };
+  return items.map(item => ({
+    id: item._id,
+    icon: '🌱',
+    tag: tagMap[item.category ?? ''] ?? 'Plantation',
+    timeAgo: item.publishedDate
+      ? new Date(item.publishedDate).toLocaleDateString('en-GB')
+      : item.createdAt
+        ? new Date(item.createdAt).toLocaleDateString('en-GB')
+        : '',
+    title: item.title,
+    description: item.content,
+  }));
+}
+
 export default function NewsScreen({ onBack }: Props) {
   const [items, setItems] = useState<NewsItem[]>(NEWS_ITEMS);
   const [loading, setLoading] = useState(true);
@@ -42,17 +70,34 @@ export default function NewsScreen({ onBack }: Props) {
     let mounted = true;
     (async () => {
       try {
+        const real = await newsService.list({
+          page: 1,
+          limit: 20,
+          status: 'Published',
+        });
+        const list = unwrapList(real);
+        if (mounted && list.length > 0) {
+          setItems(mapApiNews(list));
+          return;
+        }
         const data = await staticDataService.getNews();
         if (mounted && Array.isArray(data) && data.length > 0) {
           setItems(mapStaticNews(data));
         }
       } catch (error) {
-        if (mounted) {
-          setErrorMsg(
-            error instanceof ApiError
-              ? error.message
-              : 'Failed to load news',
-          );
+        try {
+          const data = await staticDataService.getNews();
+          if (mounted && Array.isArray(data) && data.length > 0) {
+            setItems(mapStaticNews(data));
+          }
+        } catch {
+          if (mounted) {
+            setErrorMsg(
+              error instanceof ApiError
+                ? error.message
+                : 'Failed to load news',
+            );
+          }
         }
       } finally {
         if (mounted) setLoading(false);

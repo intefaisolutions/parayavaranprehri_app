@@ -10,12 +10,27 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon, { IconName } from '../components/AppIcon';
 import { MAP_TREES, MapTree, MapTreeType } from '../data/mapTreesData';
-import { getTopInset } from '../utils/layout';
-import { ApiError, treesService, type ApiTree } from '../api';
+import { getBottomInset, getTopInset } from '../utils/layout';
+import {
+  ApiError,
+  mapsService,
+  treesService,
+  unwrapList,
+  type ApiTree,
+} from '../api';
 
 const { width } = Dimensions.get('window');
 
 const FILTERS = ['All', 'Peepal', 'Neem', 'Banyan', 'Mango'];
+
+type MapSite = {
+  id: string;
+  locationName: string;
+  treeCount: number;
+  plantationArea?: string;
+  latitude?: number;
+  longitude?: number;
+};
 
 const TREE_STYLE: Record<
   MapTreeType,
@@ -116,14 +131,20 @@ function TreeMapPin({ type }: { type: MapTreeType }) {
 export default function MapScreen() {
   const [activeFilter, setActiveFilter] = useState('All');
   const [trees, setTrees] = useState<MapTree[]>(MAP_TREES);
+  const [sites, setSites] = useState<MapSite[]>([]);
+  const [sourceLabel, setSourceLabel] = useState('Loading map data…');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      let treeCount = 0;
+      let siteCount = 0;
+
       try {
         const apiTrees = await treesService.list();
         if (mounted && Array.isArray(apiTrees) && apiTrees.length > 0) {
           setTrees(mapApiTreesToPins(apiTrees));
+          treeCount = apiTrees.length;
         }
       } catch (error) {
         if (__DEV__) {
@@ -131,6 +152,58 @@ export default function MapScreen() {
             error instanceof ApiError ? error.message : 'Failed to load trees',
           );
         }
+      }
+
+      try {
+        const mapsRes = await mapsService.list({
+          page: 1,
+          limit: 50,
+          status: 'Active',
+        });
+        const list = unwrapList(mapsRes as any);
+        if (mounted && list.length > 0) {
+          const mapped: MapSite[] = list.map((m: any) => ({
+            id: String(m._id),
+            locationName: m.locationName || 'Plantation site',
+            treeCount: Number(m.treeCount) || 0,
+            plantationArea: m.plantationArea,
+            latitude: m.latitude,
+            longitude: m.longitude,
+          }));
+          setSites(mapped);
+          siteCount = mapped.length;
+
+          // If trees had no coords, place pins from map sites
+          const withCoords = mapped.filter(
+            s =>
+              typeof s.latitude === 'number' &&
+              typeof s.longitude === 'number',
+          );
+          if (withCoords.length > 0 && treeCount === 0) {
+            const fakeTrees: ApiTree[] = withCoords.map((s, i) => ({
+              _id: s.id,
+              treeName: s.locationName,
+              species: 'Peepal',
+              latitude: s.latitude,
+              longitude: s.longitude,
+            })) as ApiTree[];
+            setTrees(mapApiTreesToPins(fakeTrees));
+          }
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError ? error.message : 'Failed to load maps',
+          );
+        }
+      }
+
+      if (mounted) {
+        setSourceLabel(
+          siteCount > 0
+            ? `${siteCount} plantation site${siteCount === 1 ? '' : 's'} · ${treeCount || trees.length} trees`
+            : `${treeCount || trees.length} trees across Indore Vidhan Sabhas`,
+        );
       }
     })();
     return () => {
@@ -147,105 +220,133 @@ export default function MapScreen() {
       <View style={styles.header}>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>Plantation Map</Text>
-          <Text style={styles.headerSubtitle}>
-            {filteredTrees.length} tree{filteredTrees.length === 1 ? '' : 's'}{' '}
-            across Indore Vidhan Sabhas
-          </Text>
+          <Text style={styles.headerSubtitle}>{sourceLabel}</Text>
         </View>
         <Pressable style={styles.bellButton}>
           <AppIcon name="bell-outline" size={20} color="#0a3617" />
         </Pressable>
       </View>
 
-      <View style={styles.mapArea}>
-        <LinearGradient
-          colors={['#eef9f0', '#f7fcf4', '#eef9f0']}
-          style={StyleSheet.absoluteFill}
-        />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: getBottomInset(100) }}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.mapArea}>
+          <LinearGradient
+            colors={['#eef9f0', '#f7fcf4', '#eef9f0']}
+            style={StyleSheet.absoluteFill}
+          />
 
-        <View style={styles.gridOverlay}>
-          {Array.from({ length: 12 }).map((_, i) => (
-            <View
-              key={`v-${i}`}
-              style={[styles.gridLineVertical, { left: (width / 11) * i }]}
-            />
-          ))}
-          {Array.from({ length: 20 }).map((_, i) => (
-            <View
-              key={`h-${i}`}
-              style={[styles.gridLineHorizontal, { top: 52 * i }]}
-            />
-          ))}
-        </View>
+          <View style={styles.gridOverlay}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <View
+                key={`v-${i}`}
+                style={[styles.gridLineVertical, { left: (width / 11) * i }]}
+              />
+            ))}
+            {Array.from({ length: 20 }).map((_, i) => (
+              <View
+                key={`h-${i}`}
+                style={[styles.gridLineHorizontal, { top: 52 * i }]}
+              />
+            ))}
+          </View>
 
-        <View style={styles.riverCurve1} />
-        <View style={styles.riverCurve2} />
+          <View style={styles.riverCurve1} />
+          <View style={styles.riverCurve2} />
 
-        <View style={styles.mapContentOverlay}>
-          <View style={styles.filtersContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filtersScroll}>
-              {FILTERS.map(filter => (
-                <Pressable
-                  key={filter}
-                  style={[
-                    styles.filterPill,
-                    activeFilter === filter && styles.filterPillActive,
-                  ]}
-                  onPress={() => setActiveFilter(filter)}>
-                  <Text
+          <View style={styles.mapContentOverlay}>
+            <View style={styles.filtersContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filtersScroll}>
+                {FILTERS.map(filter => (
+                  <Pressable
+                    key={filter}
                     style={[
-                      styles.filterText,
-                      activeFilter === filter && styles.filterTextActive,
-                    ]}>
-                    {filter}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-
-          <View style={styles.mapActionsContainer}>
-            <Pressable style={styles.mapActionButton}>
-              <AppIcon name="layers-outline" size={20} color="#374151" />
-            </Pressable>
-            <Pressable style={styles.mapActionButton}>
-              <AppIcon name="filter-variant" size={20} color="#374151" />
-            </Pressable>
-            <Pressable style={styles.mapActionButton}>
-              <AppIcon name="crosshairs-gps" size={20} color="#374151" />
-            </Pressable>
-          </View>
-
-          <View
-            style={[
-              styles.userLocationMarker,
-              { top: 318, left: width / 2 - 28 },
-            ]}>
-            <View style={styles.userLocationPulse} />
-            <View style={styles.userLocationRing}>
-              <AppIcon name="crosshairs-gps" size={18} color="#fff" />
+                      styles.filterPill,
+                      activeFilter === filter && styles.filterPillActive,
+                    ]}
+                    onPress={() => setActiveFilter(filter)}>
+                    <Text
+                      style={[
+                        styles.filterText,
+                        activeFilter === filter && styles.filterTextActive,
+                      ]}>
+                      {filter}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
-          </View>
 
-          {filteredTrees.map(tree => (
+            <View style={styles.mapActionsContainer}>
+              <Pressable style={styles.mapActionButton}>
+                <AppIcon name="layers-outline" size={20} color="#374151" />
+              </Pressable>
+              <Pressable style={styles.mapActionButton}>
+                <AppIcon name="filter-variant" size={20} color="#374151" />
+              </Pressable>
+              <Pressable style={styles.mapActionButton}>
+                <AppIcon name="crosshairs-gps" size={20} color="#374151" />
+              </Pressable>
+            </View>
+
             <View
-              key={tree.id}
               style={[
-                styles.treeMarkerContainer,
-                {
-                  top: tree.top,
-                  left: tree.left,
-                  zIndex: tree.zIndex ?? 1,
-                },
+                styles.userLocationMarker,
+                { top: 318, left: width / 2 - 28 },
               ]}>
-              <TreeMapPin type={tree.type} />
+              <View style={styles.userLocationPulse} />
+              <View style={styles.userLocationRing}>
+                <AppIcon name="crosshairs-gps" size={18} color="#fff" />
+              </View>
             </View>
-          ))}
+
+            {filteredTrees.map(tree => (
+              <View
+                key={tree.id}
+                style={[
+                  styles.treeMarkerContainer,
+                  {
+                    top: tree.top,
+                    left: tree.left,
+                    zIndex: tree.zIndex ?? 1,
+                  },
+                ]}>
+                <TreeMapPin type={tree.type} />
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
+
+        {sites.length > 0 ? (
+          <View style={styles.sitesSection}>
+            <Text style={styles.sitesTitle}>Plantation sites</Text>
+            {sites.map(site => (
+              <View key={site.id} style={styles.siteCard}>
+                <View style={styles.siteIcon}>
+                  <AppIcon name="map-marker-outline" size={18} color="#126e35" />
+                </View>
+                <View style={styles.siteInfo}>
+                  <Text style={styles.siteName}>{site.locationName}</Text>
+                  <Text style={styles.siteMeta}>
+                    {site.treeCount} trees
+                    {site.plantationArea ? ` · ${site.plantationArea}` : ''}
+                  </Text>
+                  {typeof site.latitude === 'number' &&
+                  typeof site.longitude === 'number' ? (
+                    <Text style={styles.siteCoords}>
+                      {site.latitude.toFixed(4)}, {site.longitude.toFixed(4)}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -254,6 +355,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scroll: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -292,7 +396,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   mapArea: {
-    flex: 1,
+    height: 520,
+    marginHorizontal: 0,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -458,5 +563,52 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     marginTop: -10,
+  },
+  sitesSection: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  sitesTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0a3617',
+    marginBottom: 12,
+  },
+  siteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f4f9f4',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e8eee9',
+  },
+  siteIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e8f7ee',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  siteInfo: {
+    flex: 1,
+  },
+  siteName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0a3617',
+  },
+  siteMeta: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  siteCoords: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 2,
   },
 });

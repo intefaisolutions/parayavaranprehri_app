@@ -49,6 +49,13 @@ export const treesService = {
     });
   },
 
+  assignMitra(id: string, mitraId: string) {
+    return apiRequest<ApiTree>(`/trees/${id}/assign-mitra`, {
+      method: 'PATCH',
+      body: { mitraId },
+    });
+  },
+
   remove(id: string) {
     return apiRequest(`/trees/${id}`, { method: 'DELETE' });
   },

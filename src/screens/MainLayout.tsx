@@ -33,9 +33,10 @@ import {
   authService,
   clearSession,
   getRefreshToken,
+  usersService,
   vehiclesService,
 } from '../api';
-import { mapApiVehicleToUi } from '../api/mappers';
+import { mapApiVehicleToUi, mapInsuranceListToUi } from '../api/mappers';
 
 type Tab = 'home' | 'vehicles' | 'map' | 'ranks' | 'profile';
 
@@ -72,8 +73,29 @@ export default function MainLayout() {
     setLoadingVehicles(true);
     setVehiclesError('');
     try {
-      const list = await vehiclesService.list();
-      setVehicles(list.map(mapApiVehicleToUi));
+      // Prefer ShieldSure insurance vehicles; fall back to app-registered ones.
+      let insuranceVehicles: Vehicle[] = [];
+      try {
+        const insuranceRaw = await usersService.getMyVehicles();
+        insuranceVehicles = mapInsuranceListToUi(insuranceRaw);
+      } catch {
+        insuranceVehicles = [];
+      }
+
+      let appVehicles: Vehicle[] = [];
+      try {
+        const list = await vehiclesService.list();
+        appVehicles = (Array.isArray(list) ? list : []).map(mapApiVehicleToUi);
+      } catch {
+        appVehicles = [];
+      }
+
+      const byPlate = new Map<string, Vehicle>();
+      [...insuranceVehicles, ...appVehicles].forEach(v => {
+        const key = (v.plate || v.id).toUpperCase();
+        if (!byPlate.has(key)) byPlate.set(key, v);
+      });
+      setVehicles(Array.from(byPlate.values()));
     } catch (error) {
       const message =
         error instanceof ApiError

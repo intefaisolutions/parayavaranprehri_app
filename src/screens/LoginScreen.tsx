@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import { ApiError, authService } from '../api';
 
@@ -32,18 +32,34 @@ const COLORS = {
   inputBg: '#f2f8f2',
   inputBorder: '#e0e8e0',
   error: '#d32f2f',
+  successBg: '#e8f7ee',
+  successText: '#0f766e',
+  successBorder: '#86efac',
 };
 
 export default function LoginScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Login'>>();
   const [phone, setPhone] = useState('');
   const [touched, setTouched] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (route.params?.registered) {
+      setSuccessMsg(route.params.message || 'You registered successfully');
+      if (route.params.phoneNumber) {
+        setPhone(route.params.phoneNumber.replace(/\D/g, '').slice(0, 10));
+      }
+    }
+  }, [route.params]);
 
   const digitsOnly = phone.replace(/\D/g, '');
   const isValid = digitsOnly.length === 10;
-  const showError = (touched && digitsOnly.length > 0 && !isValid) || errorMsg.length > 0;
+  const showError =
+    (touched && digitsOnly.length > 0 && !isValid) || errorMsg.length > 0;
 
   // Format to: 98260 12345
   const formattedPhone =
@@ -64,6 +80,7 @@ export default function LoginScreen() {
     setErrorMsg('');
     try {
       await authService.requestOtp({ phone: digitsOnly });
+      setSuccessMsg('');
       navigation.navigate('Otp', { phoneNumber: digitsOnly });
     } catch (error) {
       const message =
@@ -78,7 +95,6 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      {/* ABSOLUTE BACKGROUND GRADIENT (Top 50%) */}
       <LinearGradient
         colors={[COLORS.gradientStart, COLORS.gradientEnd]}
         start={{ x: 0, y: 0.5 }}
@@ -86,17 +102,17 @@ export default function LoginScreen() {
         style={styles.headerBackground}
       />
 
-      {/* BODY WITH CENTERED CARD */}
       <KeyboardAvoidingView
         style={styles.body}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-        >
-          {/* HEADER CONTENT (Now inside ScrollView so it scrolls) */}
+          bounces
+          nestedScrollEnabled>
           <View style={[styles.brandRow, { marginTop: getTopInset(20) }]}>
             <View style={styles.logoCircle}>
               <Text style={styles.logoLeaf}>🌿</Text>
@@ -116,6 +132,18 @@ export default function LoginScreen() {
               Sign in with the mobile number registered on your vehicle RC.
             </Text>
 
+            {successMsg ? (
+              <View style={styles.successBanner}>
+                <Text style={styles.successBannerText}>{successMsg}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setSuccessMsg('')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.successDismiss}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             <Text style={styles.label}>Mobile number</Text>
             <View style={[styles.inputWrap, showError && styles.inputError]}>
               <Text style={styles.countryCode}>+91</Text>
@@ -128,7 +156,7 @@ export default function LoginScreen() {
                 placeholder="98260 12345"
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType="number-pad"
-                maxLength={11} // 10 digits + 1 space
+                maxLength={11}
                 returnKeyType="done"
               />
             </View>
@@ -139,36 +167,40 @@ export default function LoginScreen() {
               </Text>
             )}
 
-            {/* SEND OTP BUTTON */}
-            <Pressable
+            <TouchableOpacity
+              activeOpacity={0.8}
               onPress={handleSendOtp}
               disabled={!isValid || loading}
-              style={({ pressed }) => [
-                styles.buttonOuter,
-                isValid && pressed && { opacity: 0.8 },
-              ]}
-            >
-              {isValid ? (
+              style={styles.buttonOuter}>
+              {isValid && !loading ? (
                 <LinearGradient
                   colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={styles.buttonInner}
-                >
+                  style={styles.buttonInner}>
+                  <Text style={styles.buttonText}>Send OTP</Text>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.buttonInner, styles.buttonDisabled]}>
                   {loading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={styles.buttonText}>Send OTP</Text>
                   )}
-                </LinearGradient>
-              ) : (
-                <View style={[styles.buttonInner, styles.buttonDisabled]}>
-                  <Text style={styles.buttonText}>Send OTP</Text>
                 </View>
               )}
-            </Pressable>
+            </TouchableOpacity>
 
-            {/* FOOTER */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('Register')}
+              style={styles.registerLink}>
+              <Text style={styles.registerLinkText}>
+                New user?{' '}
+                <Text style={styles.registerLinkBold}>Register</Text>
+              </Text>
+            </TouchableOpacity>
+
             <View style={styles.footerRow}>
               <Text style={styles.shieldIcon}>🛡️</Text>
               <Text style={styles.footerText}>Govt-verified · Encrypted</Text>
@@ -190,12 +222,12 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '50%',
+    height: SCREEN_HEIGHT * 0.42,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 28,
     zIndex: 20,
   },
   logoCircle: {
@@ -231,8 +263,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    justifyContent: 'center', 
+    paddingBottom: getBottomInset(48),
   },
   card: {
     backgroundColor: COLORS.white,
@@ -240,12 +271,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 28,
-    // Shadow for iOS
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
-    // Elevation for Android
     elevation: 8,
   },
   title: {
@@ -263,6 +293,31 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: COLORS.textMuted,
     marginBottom: 28,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.successBg,
+    borderWidth: 1,
+    borderColor: COLORS.successBorder,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 20,
+    gap: 10,
+  },
+  successBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.successText,
+    lineHeight: 20,
+  },
+  successDismiss: {
+    fontSize: 14,
+    color: COLORS.successText,
+    fontWeight: '700',
+    opacity: 0.7,
   },
   label: {
     fontSize: 14,
@@ -329,6 +384,18 @@ const styles = StyleSheet.create({
   buttonText: {
     color: COLORS.white,
     fontSize: 17,
+    fontWeight: '700',
+  },
+  registerLink: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  registerLinkText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+  },
+  registerLinkBold: {
+    color: COLORS.gradientStart,
     fontWeight: '700',
   },
   footerRow: {

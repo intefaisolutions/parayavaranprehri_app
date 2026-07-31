@@ -14,7 +14,12 @@ import DateTimePicker, {
 import LinearGradient from 'react-native-linear-gradient';
 import { revealSacredTree, RevealedTree } from '../data/rashiVanData';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, staticDataService, type StaticRashiItem } from '../api';
+import {
+  ApiError,
+  rashiTreesService,
+  staticDataService,
+  type StaticRashiItem,
+} from '../api';
 
 type Props = {
   onBack: () => void;
@@ -25,6 +30,13 @@ const formatDate = (date: Date) => {
   const day = String(date.getDate()).padStart(2, '0');
   const year = date.getFullYear();
   return `${month}/${day}/${year}`;
+};
+
+const formatDobApi = (date: Date) => {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${year}-${month}-${day}`;
 };
 
 const formatTime = (date: Date) => {
@@ -43,6 +55,7 @@ export default function RashiVanScreen({ onBack }: Props) {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [revealed, setRevealed] = useState<RevealedTree | null>(null);
   const [apiRashi, setApiRashi] = useState<StaticRashiItem[]>([]);
+  const [revealing, setRevealing] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -67,30 +80,47 @@ export default function RashiVanScreen({ onBack }: Props) {
     };
   }, []);
 
-  const handleReveal = () => {
+  const handleReveal = async () => {
+    if (revealing) return;
+    setRevealing(true);
     const local = revealSacredTree(birthDate);
-    if (apiRashi.length > 0) {
-      const rashiName = local.rashi.name.toLowerCase();
-      const match =
-        apiRashi.find(item => item.rashi.toLowerCase().includes(rashiName)) ||
-        apiRashi.find(item =>
-          rashiName.includes(
-            item.rashi.split('(')[0].trim().toLowerCase(),
-          ),
-        );
-      if (match) {
-        setRevealed({
-          ...local,
-          tree: {
-            ...local.tree,
-            name: match.tree,
-            significance: match.benefits,
-          },
-        });
-        return;
+    try {
+      const api = await rashiTreesService.byDob(formatDobApi(birthDate));
+      setRevealed({
+        ...local,
+        tree: {
+          ...local.tree,
+          name: api.tree || local.tree.name,
+          significance:
+            api.description ||
+            (api.benefits?.length ? api.benefits.join(' ') : local.tree.significance),
+        },
+      });
+    } catch {
+      if (apiRashi.length > 0) {
+        const rashiName = local.rashi.name.toLowerCase();
+        const match =
+          apiRashi.find(item => item.rashi.toLowerCase().includes(rashiName)) ||
+          apiRashi.find(item =>
+            rashiName.includes(item.rashi.split('(')[0].trim().toLowerCase()),
+          );
+        if (match) {
+          setRevealed({
+            ...local,
+            tree: {
+              ...local.tree,
+              name: match.tree,
+              significance: match.benefits,
+            },
+          });
+          setRevealing(false);
+          return;
+        }
       }
+      setRevealed(local);
+    } finally {
+      setRevealing(false);
     }
-    setRevealed(local);
   };
 
   const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {

@@ -4,11 +4,11 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -21,7 +21,6 @@ import { ApiError, authService, saveSession } from '../api';
 const OTP_LENGTH = 4;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Precise colors matching LoginScreen
 const COLORS = {
   gradientStart: '#136e35',
   gradientEnd: '#55c970',
@@ -35,7 +34,8 @@ const COLORS = {
 };
 
 export default function OtpScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'Otp'>>();
   const { phoneNumber } = route.params;
   const [otp, setOtp] = useState('');
@@ -43,9 +43,11 @@ export default function OtpScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const isValid = otp.length === OTP_LENGTH;
-  const showError = (touched && otp.length > 0 && !isValid) || errorMsg.length > 0;
+  const showError =
+    (touched && otp.length > 0 && !isValid) || errorMsg.length > 0;
 
   const maskedPhone = useMemo(() => {
     if (phoneNumber.length !== 10) {
@@ -94,7 +96,6 @@ export default function OtpScreen() {
 
   return (
     <View style={styles.root}>
-      {/* ABSOLUTE BACKGROUND GRADIENT (Top 50%) */}
       <LinearGradient
         colors={[COLORS.gradientStart, COLORS.gradientEnd]}
         start={{ x: 0, y: 0.5 }}
@@ -102,36 +103,40 @@ export default function OtpScreen() {
         style={styles.headerBackground}
       />
 
-      {/* BACK BUTTON (Absolute at top) */}
-      <Pressable
-        onPress={() => navigation.goBack()}
-        style={[styles.backBtn, { top: getTopInset(20) }]}
-      >
-        <Text style={styles.backText}>← Back</Text>
-      </Pressable>
-
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}>
         <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: getBottomInset(40) },
-          ]}
+          ref={scrollRef}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-        >
+          bounces
+          nestedScrollEnabled>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.goBack()}
+            style={[styles.backBtn, { marginTop: getTopInset(16) }]}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+
           <View style={styles.card}>
             <Text style={styles.title}>Enter OTP</Text>
             <Text style={styles.subtitle}>
-              Sent to +91 {phoneNumber.slice(0, 5)} {phoneNumber.slice(5)}
+              Sent to{' '}
+              <Text style={styles.phoneHighlight}>
+                +91 {phoneNumber.slice(0, 5)} {phoneNumber.slice(5)}
+              </Text>
+              {'\n'}
+              ({maskedPhone})
             </Text>
 
-            <Pressable
+            <TouchableOpacity
+              activeOpacity={1}
               style={styles.otpRow}
-              onPress={() => inputRef.current?.focus()}
-            >
+              onPress={() => inputRef.current?.focus()}>
               {Array.from({ length: OTP_LENGTH }).map((_, index) => (
                 <View
                   key={index}
@@ -139,8 +144,7 @@ export default function OtpScreen() {
                     styles.otpBox,
                     otp.length === index && styles.otpBoxActive,
                     showError && styles.otpBoxError,
-                  ]}
-                >
+                  ]}>
                   <Text style={styles.otpDigit}>{otp[index] ?? ''}</Text>
                 </View>
               ))}
@@ -149,52 +153,55 @@ export default function OtpScreen() {
                 value={otp}
                 onChangeText={handleOtpChange}
                 onBlur={() => setTouched(true)}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                  }, 250);
+                }}
                 keyboardType="number-pad"
                 maxLength={OTP_LENGTH}
                 style={styles.otpInputOverlay}
                 autoFocus
                 caretHidden
               />
-            </Pressable>
+            </TouchableOpacity>
 
-            {showError && (
+            {showError ? (
               <Text style={styles.errorText}>
                 {errorMsg || 'Please enter the complete 4-digit OTP'}
               </Text>
-            )}
+            ) : null}
 
-            <Pressable
+            <TouchableOpacity
+              activeOpacity={0.8}
               onPress={handleVerify}
               disabled={!isValid || loading}
-              style={({ pressed }) => [
-                styles.buttonOuter,
-                isValid && pressed && { opacity: 0.8 },
-              ]}
-            >
-              {isValid ? (
+              style={styles.buttonOuter}>
+              {isValid && !loading ? (
                 <LinearGradient
                   colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                   start={{ x: 0, y: 0.5 }}
                   end={{ x: 1, y: 0.5 }}
-                  style={styles.buttonInner}
-                >
+                  style={styles.buttonInner}>
+                  <Text style={styles.buttonText}>Verify & Continue</Text>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.buttonInner, styles.buttonDisabled]}>
                   {loading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={styles.buttonText}>Verify & Continue</Text>
                   )}
-                </LinearGradient>
-              ) : (
-                <View style={[styles.buttonInner, styles.buttonDisabled]}>
-                  <Text style={styles.buttonText}>Verify & Continue</Text>
                 </View>
               )}
-            </Pressable>
+            </TouchableOpacity>
 
             <View style={styles.resendRow}>
-              <Pressable onPress={() => navigation.goBack()}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => navigation.goBack()}>
                 <Text style={styles.resendText}>Change number</Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -218,20 +225,19 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '50%',
+    height: SCREEN_HEIGHT * 0.42,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingBottom: 80, // Pushes the center point slightly higher
-    justifyContent: 'center', 
+    paddingBottom: getBottomInset(48),
   },
   backBtn: {
-    position: 'absolute',
-    left: 20,
-    zIndex: 20,
-    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
     paddingHorizontal: 4,
+    marginBottom: 20,
+    zIndex: 20,
   },
   backText: {
     color: COLORS.white,
@@ -244,12 +250,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 28,
-    // Shadow for iOS
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
-    // Elevation for Android
     elevation: 8,
   },
   title: {
@@ -278,7 +283,7 @@ const styles = StyleSheet.create({
   },
   otpBox: {
     flex: 1,
-    aspectRatio: 1, // Makes the box perfectly square automatically based on width
+    aspectRatio: 1,
     borderRadius: 24,
     borderWidth: 1.5,
     borderColor: COLORS.inputBorder,
@@ -288,8 +293,7 @@ const styles = StyleSheet.create({
   },
   otpBoxActive: {
     borderColor: COLORS.gradientEnd,
-    // Keep borderWidth same so box size doesn't jump
-    borderWidth: 1.5, 
+    borderWidth: 1.5,
   },
   otpBoxError: {
     borderColor: COLORS.error,
@@ -307,6 +311,7 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     fontSize: 13,
     marginBottom: 12,
+    lineHeight: 20,
   },
   buttonOuter: {
     marginTop: 20,

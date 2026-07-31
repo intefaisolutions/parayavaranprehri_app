@@ -46,3 +46,65 @@ export function mapApiVehicleToUi(api: ApiVehicle): Vehicle {
     iconUrl: iconForVehicle(api.name, api.fuel),
   };
 }
+
+/** Normalize ShieldSure / insurance API vehicle payloads into ApiVehicle. */
+export function normalizeInsuranceVehicle(
+  raw: Record<string, unknown>,
+  index: number,
+): ApiVehicle | null {
+  const plate = String(
+    raw.plate ??
+      raw.registrationNumber ??
+      raw.regNo ??
+      raw.vehicleNumber ??
+      raw.number ??
+      '',
+  ).trim();
+  if (!plate) return null;
+
+  const name = String(
+    raw.name ??
+      raw.model ??
+      raw.vehicleModel ??
+      raw.makeModel ??
+      raw.brand ??
+      'Insured Vehicle',
+  ).trim();
+  const vhId = String(
+    raw.vhId ?? raw.vehicleId ?? raw.policyNumber ?? raw._id ?? `INS-${index + 1}`,
+  );
+  const fuel = String(raw.fuel ?? raw.fuelType ?? 'Petrol');
+
+  return {
+    _id: String(raw._id ?? `insurance-${plate}-${index}`),
+    plate,
+    name,
+    vhId,
+    fuel,
+    insuranceId: raw.insuranceId ? String(raw.insuranceId) : undefined,
+    createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+  };
+}
+
+export function mapInsuranceListToUi(raw: unknown): Vehicle[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { vehicles?: unknown })?.vehicles)
+      ? (raw as { vehicles: unknown[] }).vehicles
+      : Array.isArray((raw as { data?: unknown })?.data)
+        ? (raw as { data: unknown[] }).data
+        : [];
+
+  return list
+    .map((item, index) =>
+      normalizeInsuranceVehicle(
+        (item && typeof item === 'object' ? item : {}) as Record<
+          string,
+          unknown
+        >,
+        index,
+      ),
+    )
+    .filter((v): v is ApiVehicle => v !== null)
+    .map(mapApiVehicleToUi);
+}

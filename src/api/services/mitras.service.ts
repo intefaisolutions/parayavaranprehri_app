@@ -6,6 +6,20 @@ export const mitrasService = {
     return apiRequest('/mitras', { method: 'POST', body: payload });
   },
 
+  selfRegister(payload: CreateMitraPayload) {
+    return apiRequest<{
+      _id: string;
+      mitraId: string;
+      name: string;
+      mobile: string;
+      email?: string;
+      profession?: string;
+      address?: string;
+      membership?: string;
+      status?: string;
+    }>('/mitras/self-register', { method: 'POST', body: payload });
+  },
+
   list(params: { status?: string; search?: string } = {}) {
     return apiRequest(`/mitras${toQueryString(params)}`);
   },

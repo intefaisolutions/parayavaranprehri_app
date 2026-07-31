@@ -57,14 +57,14 @@ export default function MitraScreen({ onBack }: Props) {
     setSubmitting(true);
     setErrorMsg('');
     try {
-      const created = (await mitrasService.create({
+      const created = await mitrasService.selfRegister({
         name: formName,
         mobile: formMobile,
         email: formEmail,
         profession: formProfession || undefined,
         address: formAddress || undefined,
         membership,
-      })) as { mitraId?: string; id?: string };
+      });
 
       setCardData({
         name: formName,
@@ -73,11 +73,11 @@ export default function MitraScreen({ onBack }: Props) {
         mobile: formMobile,
         email: formEmail,
         membership,
-        mitraId: created.mitraId || created.id || generateMitraId(),
+        mitraId: created.mitraId || generateMitraId(),
       });
       setStep('card');
     } catch (createError) {
-      // Citizen users may lack mitras:create — fall back to static card data
+      // Citizen may lack mitras:create — try self-register failed then static card
       try {
         const card = await staticDataService.getMitraCard();
         setCardData({

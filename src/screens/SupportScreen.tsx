@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, staticDataService } from '../api';
+import { ApiError, callCenterService, staticDataService, unwrapList } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -65,12 +65,30 @@ export default function SupportScreen({ onBack }: Props) {
           setExpandedFaq('1');
         }
       } catch (error) {
-        // Keep local FAQ/contacts if API fails
         if (__DEV__) {
           console.warn(
             error instanceof ApiError ? error.message : 'Support load failed',
           );
         }
+      }
+      try {
+        const contacts = await callCenterService.list({
+          page: 1,
+          limit: 20,
+          status: 'Active',
+        });
+        const list = unwrapList(contacts as any) as Array<{
+          contactType?: string;
+          contactValue?: string;
+        }>;
+        if (mounted && list.length > 0) {
+          const phoneContact = list.find(c => c.contactType === 'Phone');
+          const emailContact = list.find(c => c.contactType === 'Email');
+          if (phoneContact?.contactValue) setPhone(phoneContact.contactValue);
+          if (emailContact?.contactValue) setEmail(emailContact.contactValue);
+        }
+      } catch {
+        // keep static support contacts
       } finally {
         if (mounted) setLoading(false);
       }

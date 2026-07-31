@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -17,6 +17,7 @@ import {
 import { Vehicle } from '../data/vehiclesData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { ApiError, treesService, vehiclesService } from '../api';
 
 type Props = {
   vehicle: Vehicle;
@@ -95,8 +96,74 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
 }
 
 export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
-  const info = getVehicleDetailInfo(vehicle);
-  const detailGrid = DETAIL_GRID(info, vehicle);
+  const [detailVehicle, setDetailVehicle] = useState(vehicle);
+  const info = getVehicleDetailInfo(detailVehicle);
+  const [assignedTrees, setAssignedTrees] = useState(info.assignedTrees);
+  const detailGrid = DETAIL_GRID(info, detailVehicle);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const apiVehicle = await vehiclesService.getById(vehicle.id);
+        if (mounted && apiVehicle) {
+          setDetailVehicle(prev => ({
+            ...prev,
+            name: apiVehicle.name || prev.name,
+            plate: apiVehicle.plate || prev.plate,
+            fuel: apiVehicle.fuel || prev.fuel,
+            vhId: apiVehicle.vhId || prev.vhId,
+          }));
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            error instanceof ApiError
+              ? error.message
+              : 'Vehicle detail load failed',
+          );
+        }
+      }
+      try {
+        const allTrees = await treesService.list();
+        if (mounted && Array.isArray(allTrees)) {
+          const plate = vehicle.plate.replace(/\s/g, '').toUpperCase();
+          const matched = allTrees.filter((t: any) => {
+            const vn = String(t.vehicleNumber || '')
+              .replace(/\s/g, '')
+              .toUpperCase();
+            return vn && vn === plate;
+          });
+          if (matched.length > 0) {
+            setAssignedTrees(
+              matched.map((t: any, index: number) => ({
+                id: String(index + 1),
+                name: t.species || t.treeName || 'Tree',
+                treeId: t.treeId || t._id,
+                plantedDate: t.plantedDate
+                  ? new Date(t.plantedDate).toLocaleDateString('en-GB')
+                  : '—',
+                status: t.status || 'HEALTHY',
+                location: t.location || t.city || '—',
+                height: t.height ? `${t.height} ft` : '—',
+                co2: '—',
+                progress: 0.6,
+                imageUrl:
+                  t.image ||
+                  'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=200',
+                months: ['M1', 'M2', 'M3', 'M4'],
+              })),
+            );
+          }
+        }
+      } catch {
+        // keep mock trees
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [vehicle]);
 
   return (
     <View style={styles.root}>
@@ -129,15 +196,15 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
           <View style={styles.summaryTop}>
             <View style={styles.summaryAvatar}>
               <AppIcon
-                name={getVehicleIconName(vehicle)}
+                name={getVehicleIconName(detailVehicle)}
                 size={32}
                 color="#ffffff"
               />
             </View>
             <View style={styles.summaryInfo}>
-              <Text style={styles.summaryId}>{vehicle.vhId}</Text>
+              <Text style={styles.summaryId}>{detailVehicle.vhId}</Text>
               <Text style={styles.summaryMeta}>
-                {vehicle.plate} · {vehicle.fuel}
+                {detailVehicle.plate} · {detailVehicle.fuel}
               </Text>
             </View>
             <View style={styles.qrBox}>
@@ -187,7 +254,7 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
 
         <View style={styles.timeline}>
           <View style={styles.timelineLine} />
-          {info.assignedTrees.map(tree => (
+          {assignedTrees.map(tree => (
             <TreeItem key={tree.id} tree={tree} />
           ))}
         </View>

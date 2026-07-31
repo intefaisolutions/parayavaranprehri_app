@@ -4,12 +4,36 @@ import type {
   TokenPair,
 } from '../types';
 
+export type RegisterPayload = {
+  firstName: string;
+  lastName: string;
+  mobile: string;
+  email: string;
+  gender: 'Male' | 'Female' | 'Other';
+  address: string;
+};
+
+export type RegisterResponse = {
+  message: string;
+  phone: string;
+  insuranceVerified: boolean;
+  vehiclesLinked: number;
+};
+
 export const authService = {
   login(email: string, password: string) {
     return apiRequest<AuthResponse>('/auth/login', {
       method: 'POST',
       auth: false,
       body: { email, password },
+    });
+  },
+
+  register(payload: RegisterPayload) {
+    return apiRequest<RegisterResponse>('/auth/register', {
+      method: 'POST',
+      auth: false,
+      body: payload,
     });
   },
 

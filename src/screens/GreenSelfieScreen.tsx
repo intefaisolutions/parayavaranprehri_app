@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Image,
+  PermissionsAndroid,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon, { IconName } from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, greenSelfiesService } from '../api';
+import { ApiError, greenSelfiesService, uploadsService } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -23,23 +28,50 @@ const CATEGORIES = [
   'Paryavaran Mitra',
 ];
 
-/** Placeholder image URL — media upload API does not exist yet */
-const SELFIE_PLACEHOLDER_URL =
-  'https://via.placeholder.com/600x800.png?text=Green+Selfie';
+async function ensureCameraPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  const granted = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.CAMERA,
+    {
+      title: 'Camera permission',
+      message: 'Allow camera to capture your Green Selfie',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Deny',
+    },
+  );
+  return granted === PermissionsAndroid.RESULTS.GRANTED;
+}
 
 export default function GreenSelfieScreen({ onBack }: Props) {
   const [activeCategory, setActiveCategory] = useState('Eco Hero');
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
 
-  const handleTakeSelfie = async () => {
-    if (submitting) return;
+  const uploadAndSave = async (uri: string, type?: string, name?: string) => {
     setSubmitting(true);
     setStatusMsg('');
     try {
+      let imageUrl = uri;
+      try {
+        const uploaded = await uploadsService.upload(
+          {
+            uri,
+            name: name || `green-selfie-${Date.now()}.jpg`,
+            type: type || 'image/jpeg',
+          },
+          'general',
+        );
+        if (uploaded?.url) imageUrl = uploaded.url;
+      } catch {
+        // If S3 upload fails, still try create with local/file uri may fail —
+        // surface upload error clearly
+        throw new ApiError(0, 'Image upload failed. Check network / S3 config.');
+      }
+
       await greenSelfiesService.create({
         category: activeCategory,
-        imageUrl: SELFIE_PLACEHOLDER_URL,
+        imageUrl,
       });
       setStatusMsg('Green selfie saved successfully.');
     } catch (error) {
@@ -51,6 +83,46 @@ export default function GreenSelfieScreen({ onBack }: Props) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const pickFromCamera = async () => {
+    if (submitting) return;
+    const ok = await ensureCameraPermission();
+    if (!ok) {
+      Alert.alert('Permission needed', 'Camera permission is required.');
+      return;
+    }
+    const result = await launchCamera({
+      mediaType: 'photo',
+      cameraType: 'front',
+      quality: 0.8,
+      saveToPhotos: false,
+    });
+    if (result.didCancel || !result.assets?.[0]?.uri) return;
+    const asset = result.assets[0];
+    setPreviewUri(asset.uri);
+    await uploadAndSave(asset.uri!, asset.type, asset.fileName);
+  };
+
+  const pickFromGallery = async () => {
+    if (submitting) return;
+    const result = await launchImageLibrary({
+      mediaType: 'photo',
+      quality: 0.8,
+      selectionLimit: 1,
+    });
+    if (result.didCancel || !result.assets?.[0]?.uri) return;
+    const asset = result.assets[0];
+    setPreviewUri(asset.uri);
+    await uploadAndSave(asset.uri!, asset.type, asset.fileName);
+  };
+
+  const handleTakeSelfie = () => {
+    Alert.alert('Green Selfie', 'Choose image source', [
+      { text: 'Camera', onPress: () => void pickFromCamera() },
+      { text: 'Gallery', onPress: () => void pickFromGallery() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   return (
@@ -65,91 +137,76 @@ export default function GreenSelfieScreen({ onBack }: Props) {
             Capture your Mission 2047 moment
           </Text>
         </View>
-        <Pressable style={styles.headerBtn}>
-          <AppIcon name="bell-outline" size={20} color="#0a3617" />
-        </Pressable>
+        <View style={styles.headerBtn} />
       </View>
 
       <ScrollView
         contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: getBottomInset(32) },
+          styles.scroll,
+          { paddingBottom: getBottomInset(40) },
         ]}
         showsVerticalScrollIndicator={false}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryRow}>
-          {CATEGORIES.map(category => {
-            const isActive = activeCategory === category;
+        <View style={styles.previewCard}>
+          {previewUri ? (
+            <Image
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.previewPlaceholder}>
+              <AppIcon name="camera-outline" size={42} color="#6b7280" />
+              <Text style={styles.previewHint}>
+                Camera or gallery se photo lo
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.sectionLabel}>Category</Text>
+        <View style={styles.categoryRow}>
+          {CATEGORIES.map(cat => {
+            const active = cat === activeCategory;
             return (
               <Pressable
-                key={category}
+                key={cat}
+                onPress={() => setActiveCategory(cat)}
                 style={[
-                  styles.categoryPill,
-                  isActive && styles.categoryPillActive,
-                ]}
-                onPress={() => setActiveCategory(category)}>
+                  styles.categoryChip,
+                  active && styles.categoryChipActive,
+                ]}>
                 <Text
                   style={[
                     styles.categoryText,
-                    isActive && styles.categoryTextActive,
+                    active && styles.categoryTextActive,
                   ]}>
-                  {category}
+                  {cat}
                 </Text>
               </Pressable>
             );
           })}
-        </ScrollView>
-
-        <View style={styles.cameraFrame}>
-          <View style={styles.cameraView}>
-            <Text style={styles.cameraPlaceholder}>
-              Camera unavailable. Allow camera access to take a selfie.
-            </Text>
-
-            <View style={styles.overlayCard}>
-              <Text style={styles.overlayTag}>
-                IN {activeCategory.toUpperCase()}
-              </Text>
-              <Text style={styles.overlayName}>Rahul Sharma</Text>
-              <Text style={styles.overlaySubtitle}>
-                Paryavaran Prahri · Mission 2047
-              </Text>
-              <View style={styles.statsRow}>
-                {(
-                  [
-                    { icon: 'car-side' as IconName, value: '2' },
-                    { icon: 'tree' as IconName, value: '24' },
-                    { icon: 'cloud-outline' as IconName, value: '312kg' },
-                  ] as const
-                ).map(stat => (
-                  <View key={stat.icon} style={styles.statItem}>
-                    <AppIcon name={stat.icon} size={16} color="#fff" />
-                    <Text style={styles.statValue}>{stat.value}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
         </View>
 
         <Pressable
-          style={styles.takeSelfieBtnWrap}
           onPress={handleTakeSelfie}
-          disabled={submitting}>
+          disabled={submitting}
+          style={styles.ctaOuter}>
           <LinearGradient
-            colors={['#7dd3a0', '#44b969']}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.takeSelfieBtn}>
+            colors={['#136e35', '#55c970']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaInner}>
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.takeSelfieBtnText}>📷  Take Selfie</Text>
+              <>
+                <AppIcon name="camera" size={20} color="#fff" />
+                <Text style={styles.ctaText}>Take / Upload Selfie</Text>
+              </>
             )}
           </LinearGradient>
         </Pressable>
+
         {statusMsg ? (
           <Text style={styles.statusMsg}>{statusMsg}</Text>
         ) : null}
@@ -159,161 +216,79 @@ export default function GreenSelfieScreen({ onBack }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#f4f9f4',
-  },
+  root: { flex: 1, backgroundColor: '#f4f9f4' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingBottom: 12,
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eef2ef',
   },
   headerBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#f3f4f6',
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backIcon: {
-    fontSize: 20,
-    color: '#111827',
-    fontWeight: '600',
-  },
-  bellIcon: {
-    fontSize: 18,
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0a3617',
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  categoryRow: {
-    gap: 10,
-    paddingBottom: 16,
-  },
-  categoryPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  backIcon: { fontSize: 22, color: '#0a3617' },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: '#0a3617' },
+  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  scroll: { padding: 20 },
+  previewCard: {
+    height: 360,
     borderRadius: 24,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#dce8df',
-  },
-  categoryPillActive: {
-    backgroundColor: '#2b964f',
-    borderColor: '#2b964f',
-  },
-  categoryText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0a3617',
-  },
-  categoryTextActive: {
-    color: '#fff',
-  },
-  cameraFrame: {
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#44b969',
     overflow: 'hidden',
+    backgroundColor: '#e8eee9',
     marginBottom: 20,
   },
-  cameraView: {
-    backgroundColor: '#111827',
-    minHeight: 420,
+  previewImage: { width: '100%', height: '100%' },
+  previewPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
+    gap: 10,
   },
-  cameraPlaceholder: {
-    color: '#fff',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-    lineHeight: 22,
+  previewHint: { color: '#6b7280', fontSize: 13 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 10,
   },
-  overlayCard: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(12, 72, 32, 0.88)',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 16,
+  categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e8e0',
   },
-  overlayTag: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#7dd3a0',
-    letterSpacing: 0.8,
-    marginBottom: 4,
+  categoryChipActive: {
+    backgroundColor: '#e8f7ee',
+    borderColor: '#136e35',
   },
-  overlayName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#d4f5e0',
-    marginBottom: 2,
-  },
-  overlaySubtitle: {
-    fontSize: 12,
-    color: '#9ed4b0',
-    marginBottom: 12,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statIcon: {
-    fontSize: 14,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#d4f5e0',
-  },
-  takeSelfieBtnWrap: {
+  categoryText: { fontSize: 13, color: '#6b7280', fontWeight: '600' },
+  categoryTextActive: { color: '#136e35' },
+  ctaOuter: {
+    marginTop: 24,
     borderRadius: 28,
     overflow: 'hidden',
   },
-  takeSelfieBtn: {
-    paddingVertical: 16,
+  ctaInner: {
+    height: 56,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  takeSelfieBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  ctaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   statusMsg: {
-    marginTop: 12,
+    marginTop: 14,
     textAlign: 'center',
+    color: '#0f766e',
     fontSize: 13,
-    color: '#126e35',
+    lineHeight: 18,
   },
 });

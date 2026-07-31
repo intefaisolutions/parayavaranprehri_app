@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -8,6 +8,12 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import {
+  reportsService,
+  settingsService,
+  unwrapList,
+  vidhanSabhasService,
+} from '../api';
 
 type Props = {
   onBack: () => void;
@@ -49,6 +55,83 @@ const ADMIN_SETTINGS = [
 ];
 
 export default function AdminPreviewScreen({ onBack }: Props) {
+  const [stats, setStats] = useState(STATS);
+  const [topSabhas, setTopSabhas] = useState(TOP_SABHAS);
+  const [adminSettings, setAdminSettings] = useState(ADMIN_SETTINGS);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const sabhas = await vidhanSabhasService.list({ page: 1, limit: 20 });
+        const list = unwrapList(sabhas as any);
+        if (mounted && list.length > 0) {
+          const maxTrees = Math.max(
+            ...list.map((s: any) => Number(s.totalTrees || 0)),
+            1,
+          );
+          setTopSabhas(
+            list.slice(0, 4).map((s: any, index: number) => ({
+              rank: index + 1,
+              name: s.vidhanSabhaName,
+              trees: String(s.totalTrees ?? 0),
+              co2: `${s.totalVehicles ?? 0} vehicles`,
+              progress: Math.min(1, Number(s.totalTrees || 0) / maxTrees),
+            })),
+          );
+          const totalTrees = list.reduce(
+            (sum: number, s: any) => sum + Number(s.totalTrees || 0),
+            0,
+          );
+          const totalVehicles = list.reduce(
+            (sum: number, s: any) => sum + Number(s.totalVehicles || 0),
+            0,
+          );
+          setStats([
+            {
+              icon: 'tree-outline',
+              label: 'Trees Planted',
+              value: totalTrees.toLocaleString('en-IN'),
+            },
+            {
+              icon: 'car-outline',
+              label: 'Active Vehicles',
+              value: totalVehicles.toLocaleString('en-IN'),
+            },
+            {
+              icon: 'map-marker-account-outline',
+              label: 'Vidhan Sabhas',
+              value: String(list.length),
+            },
+            {
+              icon: 'shield-check-outline',
+              label: 'Survival %',
+              value: '91%',
+            },
+          ]);
+        }
+      } catch {
+        // keep fallback
+      }
+      try {
+        const settings = await settingsService.list({ page: 1, limit: 20 });
+        const list = unwrapList(settings as any);
+        if (mounted && list.length > 0) {
+          setAdminSettings(list.map((s: any) => s.settingName));
+        }
+      } catch {
+        // keep fallback
+      }
+      try {
+        await reportsService.list({ page: 1, limit: 5 });
+      } catch {
+        // optional
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(10) }]}>
@@ -85,7 +168,7 @@ export default function AdminPreviewScreen({ onBack }: Props) {
         </View>
 
         <View style={styles.statsGrid}>
-          {STATS.map(stat => (
+          {stats.map(stat => (
             <View key={stat.label} style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <MaterialCommunityIcons
@@ -131,7 +214,7 @@ export default function AdminPreviewScreen({ onBack }: Props) {
           </View>
         </View>
 
-        {TOP_SABHAS.map(item => (
+        {topSabhas.map(item => (
           <View key={item.name} style={styles.sabhaCard}>
             <View style={styles.sabhaTop}>
               <View style={styles.rankBadge}>
@@ -189,7 +272,7 @@ export default function AdminPreviewScreen({ onBack }: Props) {
             <Text style={styles.settingsTitle}>Settings · Admin Only</Text>
           </View>
           <View style={styles.settingsGrid}>
-            {ADMIN_SETTINGS.map(label => (
+            {adminSettings.map(label => (
               <Pressable key={label} style={styles.settingsBtn}>
                 <Text style={styles.settingsBtnText}>{label}</Text>
               </Pressable>

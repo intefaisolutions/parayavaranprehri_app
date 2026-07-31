@@ -1,5 +1,12 @@
 export type RootStackParamList = {
-  Login: undefined;
+  Login:
+    | {
+        registered?: boolean;
+        phoneNumber?: string;
+        message?: string;
+      }
+    | undefined;
+  Register: undefined;
   Otp: { phoneNumber: string };
   MainLayout: { phoneNumber?: string } | undefined;
 };

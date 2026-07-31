@@ -5,6 +5,9 @@ export type AuthUser = {
   lastName: string;
   role: string;
   permissions: string[];
+  phone?: string;
+  district?: string;
+  state?: string;
 };
 
 export type TokenPair = {
@@ -21,6 +24,8 @@ export type ApiErrorBody = {
   message?: string | string[];
   error?: string;
   statusCode?: number;
+  errors?: Record<string, string[] | string> | string[];
+  success?: boolean;
 };
 
 export class ApiError extends Error {

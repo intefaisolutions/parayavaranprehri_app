@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -11,6 +11,12 @@ import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { computeProfileStats, Vehicle } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import {
+  getStoredPhone,
+  getStoredUser,
+  notificationsService,
+  unwrapList,
+} from '../api';
 
 const { width } = Dimensions.get('window');
 
@@ -32,6 +38,39 @@ export default function ProfileScreen({
   onAdminPreview,
 }: ProfileScreenProps) {
   const stats = computeProfileStats(vehicles);
+  const [name, setName] = useState('Rahul Sharma');
+  const [phone, setPhone] = useState('+91 98260 12345');
+  const [location, setLocation] = useState('Indore, Madhya Pradesh');
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const [user, storedPhone] = await Promise.all([
+        getStoredUser(),
+        getStoredPhone(),
+      ]);
+      if (!mounted) return;
+      if (user) {
+        setName(`${user.firstName} ${user.lastName}`.trim() || name);
+        if (user.district || user.state) {
+          setLocation(
+            [user.district, user.state].filter(Boolean).join(', ') || location,
+          );
+        }
+      }
+      if (storedPhone) setPhone(`+91 ${storedPhone}`);
+      try {
+        const notifs = await notificationsService.list({ page: 1, limit: 20 });
+        if (mounted) setNotifCount(unwrapList(notifs as any).length);
+      } catch {
+        // permission may block
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <View style={styles.root}>
@@ -59,10 +98,10 @@ export default function ProfileScreen({
               <Text style={styles.avatarText}>RS</Text>
             </View>
             <View style={styles.profileDetails}>
-              <Text style={styles.profileName}>Rahul Sharma</Text>
-              <Text style={styles.profilePhone}>+91 98260 12345</Text>
+              <Text style={styles.profileName}>{name}</Text>
+              <Text style={styles.profilePhone}>{phone}</Text>
               <Text style={styles.profileLocation}>
-                Indore, Madhya Pradesh · Joined 12 Aug 2024
+                {location} · Joined 12 Aug 2024
               </Text>
             </View>
           </View>

@@ -66,8 +66,17 @@ export default function VehiclesScreen({
         </LinearGradient>
 
         <View style={styles.listContainer}>
-          {vehicles.map(vehicle => (
-            <View key={vehicle.id} style={styles.vehicleCard}>
+          {vehicles.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No vehicles yet</Text>
+              <Text style={styles.emptySubtitle}>
+                No ShieldSure insurance vehicle found for your mobile. Your
+                slots are empty — onboard a vehicle to start contributing.
+              </Text>
+            </View>
+          ) : (
+            vehicles.map(vehicle => (
+              <View key={vehicle.id} style={styles.vehicleCard}>
               <View style={styles.cardHeader}>
                 <View style={styles.vehicleAvatar}>
                   <AppIcon
@@ -143,7 +152,8 @@ export default function VehiclesScreen({
                 </Pressable>
               </View>
             </View>
-          ))}
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -237,6 +247,24 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     gap: 16,
+  },
+  emptyState: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#e8eee9',
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0a3617',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#6b7280',
   },
   vehicleCard: {
     backgroundColor: '#fff',

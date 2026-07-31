@@ -1,5 +1,4 @@
 import { apiRequest, toQueryString } from '../client';
-import type { ApiVehicle } from '../types';
 
 export type CreateUserPayload = {
   firstName: string;
@@ -36,7 +35,7 @@ export const usersService = {
   },
 
   getMyVehicles() {
-    return apiRequest<ApiVehicle[]>('/users/me/vehicles');
+    return apiRequest<unknown>('/users/me/vehicles');
   },
 
   list(query: UserQuery = {}) {

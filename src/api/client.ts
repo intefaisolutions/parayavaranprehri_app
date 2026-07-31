@@ -54,12 +54,65 @@ async function tryRefreshToken(): Promise<boolean> {
   return refreshPromise;
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  firstName: 'First name',
+  lastName: 'Last name',
+  mobile: 'Mobile',
+  email: 'Email',
+  gender: 'Gender',
+  address: 'Address',
+  name: 'Name',
+  phone: 'Phone',
+  password: 'Password',
+  code: 'OTP',
+  root: 'Form',
+};
+
+function formatFieldErrors(
+  errors: Record<string, string[] | string> | string[],
+): string {
+  if (Array.isArray(errors)) {
+    return errors.filter(Boolean).join('\n');
+  }
+
+  return Object.entries(errors)
+    .map(([field, messages]) => {
+      const label = FIELD_LABELS[field] ?? field;
+      const text = Array.isArray(messages)
+        ? messages.join(', ')
+        : String(messages);
+      return `${label}: ${text}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 function extractMessage(body: ApiErrorBody | null, fallback: string): string {
   if (!body) return fallback;
-  if (typeof body.message === 'string') return body.message;
-  if (Array.isArray(body.message) && body.message.length > 0) {
-    return body.message.join(', ');
+
+  const fromErrors =
+    body.errors !== undefined ? formatFieldErrors(body.errors) : '';
+
+  let fromMessage = '';
+  if (typeof body.message === 'string' && body.message.trim()) {
+    fromMessage = body.message.trim();
+  } else if (Array.isArray(body.message) && body.message.length > 0) {
+    fromMessage = body.message.join('\n');
   }
+
+  // Prefer field-level details when present
+  if (fromErrors) {
+    if (
+      fromMessage &&
+      fromMessage !== 'Validation failed' &&
+      !fromMessage.startsWith('Validation failed')
+    ) {
+      return `${fromMessage}\n${fromErrors}`;
+    }
+    return fromErrors;
+  }
+
+  if (fromMessage) return fromMessage;
   if (body.error) return body.error;
   return fallback;
 }
@@ -144,6 +197,92 @@ export async function apiRequest<T>(
       extractMessage(errorBody, `Request failed (${response.status})`),
       errorBody,
     );
+  }
+
+  // Backend TransformInterceptor wraps payloads as { success, data, meta? }
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    'success' in parsed &&
+    'data' in parsed
+  ) {
+    const envelope = parsed as { data: T; meta?: unknown };
+    if (envelope.meta && Array.isArray(envelope.data)) {
+      return { items: envelope.data, meta: envelope.meta } as T;
+    }
+    return envelope.data;
+  }
+
+  return parsed as T;
+}
+
+export async function apiUpload<T>(
+  path: string,
+  file: { uri: string; name: string; type: string },
+  query: Record<string, string | undefined> = {},
+): Promise<T> {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.type,
+  } as unknown as Blob);
+
+  const qs = toQueryString(query);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}${qs}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(408, 'Request timed out. Please try again.');
+    }
+    throw new ApiError(
+      0,
+      'Unable to reach the server. Check your connection and API URL.',
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const text = await response.text();
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = { message: text };
+    }
+  }
+
+  if (!response.ok) {
+    const errorBody = (parsed as ApiErrorBody) ?? null;
+    throw new ApiError(
+      response.status,
+      extractMessage(errorBody, `Upload failed (${response.status})`),
+      errorBody,
+    );
+  }
+
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    'success' in parsed &&
+    'data' in parsed
+  ) {
+    return (parsed as { data: T }).data;
   }
 
   return parsed as T;

@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dimensions,
-  FlatList,
   Image,
   Pressable,
   ScrollView,
@@ -11,81 +10,99 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
+const DR_RAM_PHOTO =
+  'https://parayavaranprehri.lovable.app/__l5e/assets-v1/2dfadff4-d848-48cf-bfcf-a65dda7d2bc0/dr-ram-patidar.png';
+
+/** Matches https://parayavaranprehri.lovable.app/dashboard Initiative Leaders */
 const INITIATIVE_LEADERS = [
   {
     id: '1',
     name: 'Shri Narendra Modi',
-    title: "Hon'ble Prime Minister, India",
-    quote: '"Small steps today, a sustainable tomorrow. We are #CommittedToOurPlanet."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/32.jpg',
+    title: "Hon'ble Prime Minister of India",
+    quote:
+      '"Mission LiFE — Lifestyle for Environment is India\'s gift to the world."',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/2386c033-50ad-4e6a-a05e-8a9a5c495676/modi.jpg',
   },
   {
     id: '2',
     name: 'Dr. Mohan Yadav',
     title: "Hon'ble Chief Minister, Madhya Pradesh",
     quote: '"A green Madhya Pradesh is a prosperous Madhya Pradesh."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/44.jpg',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/1a41d7b4-a156-40be-9e18-11abb2b5a581/mohan-yadav.webp',
   },
   {
     id: '3',
     name: 'IAS Manish Singh',
     title: 'Indian Administrative Service',
     quote: '"Governance with green vision builds tomorrow\'s India."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/12.jpg',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/371ebe86-585f-463a-aa4d-36a799e60c75/manish-singh.png',
   },
   {
     id: '4',
     name: 'Dr. Ram Patidar',
     title: 'Environmentalist, Biodiversity Conservationist & Mission Advisor',
     quote: '"Every tree we plant is a promise to the next generation."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/60.jpg',
-    topBadge: '⭐ Inspiration',
-    achievements: ['🌱 Environmentalist', '🏆 World Record Holder', '🌿 Biodiversity', '🤝 Mission Advisor'],
+    buttonText: '🇮🇳 Green Mission',
+    imageUri: DR_RAM_PHOTO,
+    topBadge: 'Inspiration',
+    achievements: [
+      'Environmentalist',
+      'World Record Holder',
+      'Biodiversity',
+      'Mission Advisor',
+    ],
   },
   {
     id: '5',
     name: 'Shivam Verma',
     title: 'Collector, Indore',
     quote: '"Every vehicle, every tree — one greener Indore."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/22.jpg',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/37e90657-3768-41c3-916b-831e696130fa/shivam-verma.jpg',
   },
   {
     id: '6',
     name: 'Siddharth Jain',
     title: 'Jila Panchayat CEO',
     quote: '"Civic action rooted in nature."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/14.jpg',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/c74d6f2b-179e-4a1c-ab2f-e2014e11e19e/siddharth-jain.webp',
   },
   {
     id: '7',
     name: 'Kshitij Singhal',
     title: 'Municipal Corporation',
     quote: '"Cleaner air begins on our streets."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/16.jpg',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/504bc0c9-58f0-4e28-82f3-5d6fb130e558/kshitij.jpg',
   },
   {
     id: '8',
     name: 'Pradeep Kumar Sharma',
     title: 'RTO, Indore',
     quote: '"Mobility that gives back to the planet."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/18.jpg',
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/2ec278a8-8b9b-4c5d-ac59-71e6c8457c06/pradeep-sharma.webp',
   },
   {
     id: '9',
     name: 'Pushyamitra Bhargav',
     title: 'Mayor, Indore',
     quote: '"Pride of Indore — leaf by leaf."',
-    buttonText: 'IN Green Mission',
-    imageUri: 'https://randomuser.me/api/portraits/men/20.jpg',
-  }
+    buttonText: '🇮🇳 Green Mission',
+    imageUri:
+      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/7f73dc40-9f27-4b22-b787-28bdae61952a/pushyamitra.png',
+  },
 ];
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon, { IconName } from '../components/AppIcon';
@@ -93,6 +110,12 @@ import { computeProfileStats, Vehicle } from '../data/vehiclesData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { colors } from '../theme/colors';
+import {
+  getStoredUser,
+  leadersService,
+  unwrapList,
+  type Leader,
+} from '../api';
 
 const { width } = Dimensions.get('window');
 
@@ -117,6 +140,48 @@ type DashboardScreenProps = {
   onAdminPreview?: () => void;
 };
 
+type LeaderCard = {
+  id: string;
+  name: string;
+  title: string;
+  quote: string;
+  buttonText: string;
+  imageUri: string;
+  topBadge?: string;
+  achievements?: string[];
+};
+
+function mapApiLeaders(items: Leader[]): LeaderCard[] {
+  return items
+    .slice()
+    .sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999))
+    .map((item, index) => {
+      const fallback = INITIATIVE_LEADERS[index];
+      const isRam = item.leaderName.toLowerCase().includes('ram patidar');
+      return {
+        id: item._id,
+        name: item.leaderName,
+        title: item.designation,
+        quote: item.organization
+          ? `"${item.organization}"`
+          : fallback?.quote || '"Committed to a greener Bharat."',
+        buttonText: '🇮🇳 Green Mission',
+        imageUri: item.photo || fallback?.imageUri || DR_RAM_PHOTO,
+        topBadge: isRam
+          ? 'Inspiration'
+          : fallback?.topBadge,
+        achievements: isRam
+          ? [
+              'Environmentalist',
+              'World Record Holder',
+              'Biodiversity',
+              'Mission Advisor',
+            ]
+          : fallback?.achievements,
+      };
+    });
+}
+
 export default function DashboardScreen({
   vehicles,
   onViewJourney,
@@ -132,6 +197,34 @@ export default function DashboardScreen({
   onAdminPreview,
 }: DashboardScreenProps) {
   const stats = computeProfileStats(vehicles);
+  const [displayName, setDisplayName] = useState('Rahul Sharma');
+  const [leaders, setLeaders] = useState<LeaderCard[]>(INITIATIVE_LEADERS);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const user = await getStoredUser();
+      if (mounted && user) {
+        setDisplayName(`${user.firstName} ${user.lastName}`.trim());
+      }
+      try {
+        const res = await leadersService.list({
+          page: 1,
+          limit: 50,
+          isActive: true,
+        });
+        const list = unwrapList(res);
+        if (mounted && list.length > 0) {
+          setLeaders(mapApiLeaders(list));
+        }
+      } catch {
+        // keep Lovable-matched fallback leaders
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const quickStatIcons: IconName[] = [
     'car-side',
@@ -162,7 +255,7 @@ export default function DashboardScreen({
               </View>
               <View style={styles.nameBlock}>
                 <Text style={styles.greeting}>Namaste 🙏</Text>
-                <Text style={styles.name}>Rahul Sharma</Text>
+                <Text style={styles.name}>{displayName}</Text>
                 <View style={styles.locationRow}>
                   <AppIcon name="map-marker-outline" size={12} color="#b2e3c6" />
                   <Text style={styles.locationText}>Rau Vidhan Sabha, Indore</Text>
@@ -233,9 +326,12 @@ export default function DashboardScreen({
               </View>
 
               <View style={styles.personRow}>
-                {/* Fallback image if native image fails, usually requires real URI */}
                 <View style={styles.personAvatar}>
-                  <Text style={styles.personEmoji}>👨🏽‍🦳</Text>
+                  <Image
+                    source={{ uri: DR_RAM_PHOTO }}
+                    style={styles.personAvatarImage}
+                    resizeMode="cover"
+                  />
                 </View>
                 <View style={styles.personInfo}>
                   <Text style={styles.personName}>Dr. Ram Patidar</Text>
@@ -345,7 +441,11 @@ export default function DashboardScreen({
               <View style={styles.inspiredProfileRow}>
                 <View style={styles.inspiredAvatarContainer}>
                   <View style={styles.inspiredAvatar}>
-                    <Text style={{fontSize: 40}}>👨🏽‍🦳</Text>
+                    <Image
+                      source={{ uri: DR_RAM_PHOTO }}
+                      style={styles.inspiredAvatarImage}
+                      resizeMode="cover"
+                    />
                   </View>
                   <View style={styles.inspiredTrophyBadge}>
                     <Text style={styles.inspiredTrophyIcon}>🏆</Text>
@@ -662,24 +762,43 @@ export default function DashboardScreen({
             <Text style={styles.swipeText}>SWIPE →</Text>
           </View>
 
-          <FlatList
+          <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScrollContent}
-            snapToInterval={296}
             decelerationRate="fast"
+            snapToInterval={296}
             snapToAlignment="start"
-            data={INITIATIVE_LEADERS}
-            keyExtractor={item => item.id}
-            renderItem={({ item: leader }) => (
-              <View style={styles.leaderCard}>
-                {leader.topBadge && (
-                  <View style={styles.leaderTopBadge}>
-                    <Text style={styles.leaderTopBadgeText}>{leader.topBadge}</Text>
+            disableIntervalMomentum
+            nestedScrollEnabled>
+            {leaders.map(leader => (
+              <View
+                key={leader.id}
+                style={[
+                  styles.leaderCard,
+                  leader.topBadge === 'Inspiration' && styles.leaderCardInspiration,
+                ]}>
+                {leader.topBadge ? (
+                  <View
+                    style={[
+                      styles.leaderTopBadge,
+                      leader.topBadge === 'Inspiration' &&
+                        styles.leaderInspirationBadge,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.leaderTopBadgeText,
+                        leader.topBadge === 'Inspiration' &&
+                          styles.leaderInspirationBadgeText,
+                      ]}>
+                      {leader.topBadge === 'Inspiration'
+                        ? '✨ Inspiration'
+                        : leader.topBadge}
+                    </Text>
                   </View>
-                )}
+                ) : null}
                 <View style={styles.leaderAvatarContainer}>
-                  <Image 
+                  <Image
                     source={{ uri: leader.imageUri }}
                     style={styles.leaderAvatarImage}
                     resizeMode="cover"
@@ -687,11 +806,9 @@ export default function DashboardScreen({
                 </View>
                 <Text style={styles.leaderName}>{leader.name}</Text>
                 <Text style={styles.leaderTitle}>{leader.title}</Text>
-                <Text style={styles.leaderQuote}>
-                  {leader.quote}
-                </Text>
-                
-                {leader.achievements && (
+                <Text style={styles.leaderQuote}>{leader.quote}</Text>
+
+                {leader.achievements ? (
                   <View style={styles.leaderAchievementsRow}>
                     {leader.achievements.map((ach, idx) => (
                       <View key={idx} style={styles.leaderAchievementBadge}>
@@ -699,14 +816,16 @@ export default function DashboardScreen({
                       </View>
                     ))}
                   </View>
-                )}
-                
+                ) : null}
+
                 <View style={styles.greenMissionBadge}>
-                  <Text style={styles.greenMissionBadgeText}>{leader.buttonText}</Text>
+                  <Text style={styles.greenMissionBadgeText}>
+                    {leader.buttonText}
+                  </Text>
                 </View>
               </View>
-            )}
-          />
+            ))}
+          </ScrollView>
         </View>
 
         {/* FOOTER ACTION CARDS */}
@@ -977,6 +1096,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
+    overflow: 'hidden',
+  },
+  personAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   personEmoji: {
     fontSize: 32,
@@ -1247,6 +1371,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  inspiredAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   inspiredTrophyBadge: {
     position: 'absolute',
@@ -1622,6 +1750,7 @@ const styles = StyleSheet.create({
   },
   leaderCard: {
     width: 280,
+    marginRight: 16,
     backgroundColor: '#fff',
     borderRadius: 32,
     padding: 24,
@@ -1630,6 +1759,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 3,
+  },
+  leaderCardInspiration: {
+    borderWidth: 1.5,
+    borderColor: '#fcd34d',
+    backgroundColor: '#fffdf7',
   },
   leaderAvatarContainer: {
     width: 80,
@@ -1683,11 +1817,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    zIndex: 2,
   },
   leaderTopBadgeText: {
     color: '#f59e0b',
     fontSize: 10,
     fontWeight: '800',
+  },
+  leaderInspirationBadge: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+  },
+  leaderInspirationBadgeText: {
+    color: '#ea580c',
   },
   leaderAchievementsRow: {
     flexDirection: 'row',

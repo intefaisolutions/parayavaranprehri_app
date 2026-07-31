@@ -14,7 +14,13 @@ import {
   PROFILE_TAGS,
 } from '../data/journeyData';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, staticDataService } from '../api';
+import {
+  ApiError,
+  partnersService,
+  staticDataService,
+  unwrapList,
+  type Partner,
+} from '../api';
 
 type Props = {
   onBack: () => void;
@@ -42,6 +48,17 @@ const PARTNERS = [
   },
 ];
 
+type PartnerCard = (typeof PARTNERS)[number];
+
+function mapPartners(items: Partner[]): PartnerCard[] {
+  return items.map(item => ({
+    icon: 'account-check-outline' as const,
+    title: item.partnerName,
+    subtitle: item.contactPerson || item.location || item.partnerType || '',
+    badge: item.partnerType || 'Partner',
+  }));
+}
+
 export default function AboutInitiativeScreen({
   onBack,
   onViewJourney,
@@ -50,15 +67,17 @@ export default function AboutInitiativeScreen({
     'Every vehicle on our streets can become a force for nature.',
   );
   const [aboutBody, setAboutBody] = useState('');
+  const [partners, setPartners] = useState<PartnerCard[]>(PARTNERS);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const info = await staticDataService.getInitiativeInfo();
-        if (!mounted || !info?.about) return;
-        if (info.about.vision) setAboutDescription(info.about.vision);
-        if (info.about.description) setAboutBody(info.about.description);
+        if (mounted && info?.about) {
+          if (info.about.vision) setAboutDescription(info.about.vision);
+          if (info.about.description) setAboutBody(info.about.description);
+        }
       } catch (error) {
         if (__DEV__) {
           console.warn(
@@ -67,6 +86,15 @@ export default function AboutInitiativeScreen({
               : 'Failed to load initiative info',
           );
         }
+      }
+      try {
+        const res = await partnersService.list({ page: 1, limit: 20, status: 'Active' });
+        const list = unwrapList(res);
+        if (mounted && list.length > 0) {
+          setPartners(mapPartners(list));
+        }
+      } catch {
+        // keep local partners
       }
     })();
     return () => {
@@ -254,7 +282,7 @@ export default function AboutInitiativeScreen({
 
         <Text style={styles.sectionTitle}>Partners</Text>
 
-        {PARTNERS.map(partner => (
+        {partners.map(partner => (
           <View key={partner.title} style={styles.partnerCard}>
             <View style={styles.partnerIconCircle}>
               <MaterialCommunityIcons
