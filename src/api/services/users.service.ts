@@ -17,6 +17,15 @@ export type CreateUserPayload = {
 
 export type UpdateUserPayload = Partial<Omit<CreateUserPayload, 'email'>>;
 
+export type UpdateMePayload = {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  avatar?: string;
+  district?: string;
+  state?: string;
+};
+
 export type UserQuery = {
   page?: number;
   limit?: number;
@@ -32,6 +41,17 @@ export type UserQuery = {
 export const usersService = {
   create(payload: CreateUserPayload) {
     return apiRequest('/users', { method: 'POST', body: payload });
+  },
+
+  getMe() {
+    return apiRequest<Record<string, unknown>>('/users/me');
+  },
+
+  updateMe(payload: UpdateMePayload) {
+    return apiRequest<Record<string, unknown>>('/users/me', {
+      method: 'PATCH',
+      body: payload,
+    });
   },
 
   getMyVehicles() {

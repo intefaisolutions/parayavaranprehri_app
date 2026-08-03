@@ -8,6 +8,14 @@ export const mapsService = {
   getById(id: string) {
     return apiRequest(`/maps/${id}`);
   },
+
+  getConfig() {
+    return apiRequest<{
+      provider: string;
+      googleMapsApiKey: string | null;
+      enabled: boolean;
+    }>('/maps/config', { auth: false });
+  },
 };
 
 export const locationsService = {

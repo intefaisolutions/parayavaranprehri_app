@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -15,6 +15,7 @@ import {
   PROFILE_STATS,
   PROFILE_TAGS,
 } from '../data/journeyData';
+import { journeyService } from '../api';
 import { getBottomInset, getTopInset } from '../utils/layout';
 
 type Props = {
@@ -54,6 +55,55 @@ const TYPE_ICONS: Record<Achievement['type'], string> = {
 };
 
 export default function JourneyAchievementsScreen({ onBack }: Props) {
+  const [profileName, setProfileName] = useState('Dr. Ram Patidar');
+  const [profileSubtitle, setProfileSubtitle] = useState(
+    'Journey & Achievements',
+  );
+  const [achievements, setAchievements] = useState<Achievement[]>(ACHIEVEMENTS);
+  const [stats, setStats] = useState(PROFILE_STATS);
+  const [tags, setTags] = useState(PROFILE_TAGS);
+  const [inspiration, setInspiration] = useState(INSPIRATION_TEXT);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const timeline = await journeyService.getTimeline();
+        if (!mounted || !timeline) return;
+        if (timeline.profile?.name) setProfileName(timeline.profile.name);
+        if (timeline.profile?.subtitle) {
+          setProfileSubtitle(timeline.profile.subtitle);
+        }
+        if (timeline.profile?.stats?.length) {
+          setStats(timeline.profile.stats);
+        }
+        if (timeline.profile?.tags?.length) {
+          setTags(timeline.profile.tags);
+        }
+        if (timeline.profile?.inspirationText) {
+          setInspiration(timeline.profile.inspirationText);
+        }
+        if (timeline.achievements?.length) {
+          setAchievements(
+            timeline.achievements.map(item => ({
+              id: item._id,
+              year: item.year,
+              type: item.type,
+              title: item.title,
+              subtitle: item.subtitle,
+              imageUrl: item.imageUrl,
+            })),
+          );
+        }
+      } catch {
+        // keep static fallback
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(10) }]}>
@@ -61,8 +111,8 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
           <Text style={styles.backIcon}>←</Text>
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Dr. Ram Patidar</Text>
-          <Text style={styles.headerSubtitle}>Journey & Achievements</Text>
+          <Text style={styles.headerTitle}>{profileName}</Text>
+          <Text style={styles.headerSubtitle}>{profileSubtitle}</Text>
         </View>
         <Pressable style={styles.headerBtn}>
           <Text style={styles.bellIcon}>🔔</Text>
@@ -93,7 +143,7 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
                   ✨ INSPIRED BY DR. RAM PATIDAR
                 </Text>
               </View>
-              <Text style={styles.profileName}>Dr. Ram Patidar</Text>
+              <Text style={styles.profileName}>{profileName}</Text>
               <Text style={styles.profileDesc}>
                 Environmentalist, World Record Holder, Biodiversity
                 Conservationist & Social Reformer
@@ -108,7 +158,7 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
           </View>
 
           <View style={styles.statsRow}>
-            {PROFILE_STATS.map(stat => (
+            {stats.map(stat => (
               <View key={stat.label} style={styles.statPill}>
                 <Text style={styles.statValue} numberOfLines={1}>
                   {stat.value}
@@ -121,7 +171,7 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
           </View>
 
           <View style={styles.tagsRow}>
-            {PROFILE_TAGS.map(tag => (
+            {tags.map(tag => (
               <View key={tag} style={styles.tagPill}>
                 <Text style={styles.tagText}>🌱 {tag}</Text>
               </View>
@@ -133,7 +183,7 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
           <Text style={styles.inspirationTitle}>
             THE INSPIRATION BEHIND PARYAVARAN PRAHRI
           </Text>
-          <Text style={styles.inspirationText}>{INSPIRATION_TEXT}</Text>
+          <Text style={styles.inspirationText}>{inspiration}</Text>
         </View>
 
         <Text style={styles.timelineTitle}>Achievement Timeline</Text>
@@ -141,11 +191,11 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
         <View style={styles.timeline}>
           <View style={styles.timelineLine} />
 
-          {ACHIEVEMENTS.map((item, index) => (
+          {achievements.map((item, index) => (
             <TimelineItem
               key={item.id}
               item={item}
-              isLast={index === ACHIEVEMENTS.length - 1}
+              isLast={index === achievements.length - 1}
             />
           ))}
         </View>

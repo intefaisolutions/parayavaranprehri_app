@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
+  Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -12,10 +17,15 @@ import AppIcon from '../components/AppIcon';
 import { computeProfileStats, Vehicle } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
+  getAccessToken,
+  getRefreshToken,
   getStoredPhone,
   getStoredUser,
   notificationsService,
+  saveSession,
   unwrapList,
+  usersService,
+  type AuthUser,
 } from '../api';
 
 const { width } = Dimensions.get('window');
@@ -27,6 +37,13 @@ interface ProfileScreenProps {
   onVehicleIdentity?: () => void;
   onRashiVan?: () => void;
   onAdminPreview?: () => void;
+}
+
+function initialsFromName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'PP';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
 export default function ProfileScreen({
@@ -41,7 +58,38 @@ export default function ProfileScreen({
   const [name, setName] = useState('Rahul Sharma');
   const [phone, setPhone] = useState('+91 98260 12345');
   const [location, setLocation] = useState('Indore, Madhya Pradesh');
+  const [avatar, setAvatar] = useState<string | undefined>();
   const [notifCount, setNotifCount] = useState(0);
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [district, setDistrict] = useState('');
+  const [stateName, setStateName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+
+  const applyUser = (user: Partial<AuthUser> & Record<string, unknown>) => {
+    const fn = String(user.firstName || '');
+    const ln = String(user.lastName || '');
+    const full = `${fn} ${ln}`.trim();
+    if (full) setName(full);
+    setFirstName(fn);
+    setLastName(ln);
+    const ph = String(user.phone || '');
+    if (ph) {
+      setPhone(ph.startsWith('+') ? ph : `+91 ${ph}`);
+      setEditPhone(ph.replace(/^\+91\s?/, ''));
+    }
+    const d = String(user.district || '');
+    const s = String(user.state || '');
+    setDistrict(d);
+    setStateName(s);
+    if (d || s) setLocation([d, s].filter(Boolean).join(', '));
+    const av = user.avatar ? String(user.avatar) : '';
+    setAvatar(av || undefined);
+    setAvatarUrl(av);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -51,15 +99,18 @@ export default function ProfileScreen({
         getStoredPhone(),
       ]);
       if (!mounted) return;
-      if (user) {
-        setName(`${user.firstName} ${user.lastName}`.trim() || name);
-        if (user.district || user.state) {
-          setLocation(
-            [user.district, user.state].filter(Boolean).join(', ') || location,
-          );
-        }
+      if (user) applyUser(user as AuthUser & Record<string, unknown>);
+      if (storedPhone) {
+        setPhone(`+91 ${storedPhone}`);
+        setEditPhone(storedPhone);
       }
-      if (storedPhone) setPhone(`+91 ${storedPhone}`);
+      try {
+        const me = (await usersService.getMe()) as AuthUser &
+          Record<string, unknown>;
+        if (mounted && me) applyUser(me);
+      } catch {
+        // keep stored profile
+      }
       try {
         const notifs = await notificationsService.list({ page: 1, limit: 20 });
         if (mounted) setNotifCount(unwrapList(notifs as any).length);
@@ -72,14 +123,71 @@ export default function ProfileScreen({
     };
   }, []);
 
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const updated = (await usersService.updateMe({
+        firstName: firstName.trim() || undefined,
+        lastName: lastName.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+        district: district.trim() || undefined,
+        state: stateName.trim() || undefined,
+        avatar: avatarUrl.trim() || '',
+      })) as AuthUser & Record<string, unknown>;
+      applyUser(updated);
+      const [accessToken, refreshToken, stored] = await Promise.all([
+        getAccessToken(),
+        getRefreshToken(),
+        getStoredUser(),
+      ]);
+      if (accessToken && refreshToken && stored) {
+        await saveSession({
+          accessToken,
+          refreshToken,
+          phone: editPhone.trim() || undefined,
+          user: {
+            ...stored,
+            firstName: String(updated.firstName || stored.firstName),
+            lastName: String(updated.lastName || stored.lastName),
+            phone: String(updated.phone || stored.phone || ''),
+            district: String(updated.district || ''),
+            state: String(updated.state || ''),
+            avatar: updated.avatar ? String(updated.avatar) : undefined,
+          },
+        });
+      }
+      setEditOpen(false);
+      Alert.alert('Saved', 'Your profile was updated.');
+    } catch (error) {
+      Alert.alert(
+        'Update failed',
+        error instanceof Error ? error.message : 'Could not update profile',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
       {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Profile</Text>
-        <Pressable style={styles.bellButton}>
-          <AppIcon name="bell-outline" size={20} color="#0a3617" />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.bellButton} onPress={() => setEditOpen(true)}>
+            <AppIcon name="pencil-outline" size={18} color="#0a3617" />
+          </Pressable>
+          <Pressable style={styles.bellButton}>
+            <AppIcon name="bell-outline" size={20} color="#0a3617" />
+            {notifCount > 0 ? (
+              <View style={styles.notifDot}>
+                <Text style={styles.notifDotText}>
+                  {notifCount > 9 ? '9+' : String(notifCount)}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -95,14 +203,16 @@ export default function ProfileScreen({
         >
           <View style={styles.profileInfoRow}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>RS</Text>
+              {avatar ? (
+                <Image source={{ uri: avatar }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{initialsFromName(name)}</Text>
+              )}
             </View>
             <View style={styles.profileDetails}>
               <Text style={styles.profileName}>{name}</Text>
               <Text style={styles.profilePhone}>{phone}</Text>
-              <Text style={styles.profileLocation}>
-                {location} · Joined 12 Aug 2024
-              </Text>
+              <Text style={styles.profileLocation}>{location}</Text>
             </View>
           </View>
 
@@ -205,6 +315,70 @@ export default function ProfileScreen({
         </Pressable>
 
       </ScrollView>
+
+      <Modal visible={editOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit profile</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="First name"
+              value={firstName}
+              onChangeText={setFirstName}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Last name"
+              value={lastName}
+              onChangeText={setLastName}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Phone"
+              keyboardType="phone-pad"
+              value={editPhone}
+              onChangeText={setEditPhone}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="District"
+              value={district}
+              onChangeText={setDistrict}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="State"
+              value={stateName}
+              onChangeText={setStateName}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Avatar image URL"
+              value={avatarUrl}
+              onChangeText={setAvatarUrl}
+              autoCapitalize="none"
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancel}
+                onPress={() => setEditOpen(false)}
+                disabled={saving}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalSave}
+                onPress={handleSaveProfile}
+                disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Save</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -213,6 +387,89 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f4f9f4',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notifDot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#e11d48',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notifDotText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: getBottomInset(24),
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0a3617',
+    marginBottom: 4,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  modalCancel: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  modalSave: {
+    flex: 1,
+    backgroundColor: '#126e35',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalSaveText: {
+    color: '#fff',
+    fontWeight: '700',
   },
   header: {
     flexDirection: 'row',
@@ -229,6 +486,7 @@ const styles = StyleSheet.create({
     color: '#0a3617',
   },
   bellButton: {
+    position: 'relative',
     width: 44,
     height: 44,
     borderRadius: 22,

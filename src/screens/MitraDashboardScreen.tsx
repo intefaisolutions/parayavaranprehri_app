@@ -19,12 +19,16 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
   certificatesService,
+  fieldIssuesService,
   getStoredPhone,
+  maintenanceLogsService,
+  mitraEventsService,
   mitrasService,
   staticDataService,
   tasksService,
   treesService,
   unwrapList,
+  type MitraEventApi,
   type TaskItem,
 } from '../api';
 
@@ -183,11 +187,49 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
   const [trees, setTrees] = useState(TREES);
   const [tasks, setTasks] = useState(INITIAL_TASKS);
   const [certificates, setCertificates] = useState(CERTIFICATES);
+  const [events, setEvents] = useState(
+    EVENTS.map(e => ({
+      id: e.id,
+      title: e.title,
+      date: e.date,
+      time: e.time,
+      location: e.location,
+      organizer: e.organizer,
+      attendanceMarked: e.attendanceMarked,
+    })),
+  );
   const [mitraName, setMitraName] = useState('Goutam Yadav');
   const [mitraCode, setMitraCode] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [verifyResult, setVerifyResult] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [markingEventId, setMarkingEventId] = useState<string | null>(null);
+
+  const mapCerts = (list: any[]) =>
+    list.map((c: any, i: number) => ({
+      id: c._id || String(i + 1),
+      title: c.title || 'Certificate',
+      subtitle: c.description || c.eventName || 'Official recognition',
+      code: c.verificationCode || c.code || '',
+      recipientName: c.recipientName || '',
+    }));
+
+  const mapEvents = (list: MitraEventApi[]) =>
+    list.map(event => {
+      const dateValue = event.date ? new Date(event.date) : null;
+      const dateStr = dateValue
+        ? dateValue.toISOString().slice(0, 10)
+        : '';
+      return {
+        id: event._id,
+        title: event.title,
+        date: dateStr,
+        time: event.time || '',
+        location: event.location,
+        organizer: event.organizer || 'Paryavaran Prahri',
+        attendanceMarked: Boolean(event.attendanceMarked),
+      };
+    });
 
   useEffect(() => {
     let mounted = true;
@@ -199,32 +241,20 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
           if (mounted && mitra) {
             setMitraName(mitra.name || mitraName);
             setMitraCode(mitra.mitraId || '');
-            if (mitra.mitraId) {
-              try {
-                const certs = await certificatesService.listByMitra(mitra.mitraId);
-                const list = Array.isArray(certs) ? certs : [];
-                if (mounted && list.length > 0) {
-                  setCertificates(
-                    list.map((c: any, i: number) => ({
-                      id: c._id || String(i + 1),
-                      title: c.title || 'Certificate',
-                      subtitle:
-                        c.description ||
-                        c.eventName ||
-                        'Official recognition',
-                      code: c.verificationCode || c.code || '',
-                      recipientName: c.recipientName || '',
-                    })),
-                  );
-                }
-              } catch {
-                // certificates permission may block
-              }
-            }
           }
         }
       } catch {
         // keep defaults
+      }
+
+      try {
+        const certs = await certificatesService.listMine();
+        const list = Array.isArray(certs) ? certs : [];
+        if (mounted && list.length > 0) {
+          setCertificates(mapCerts(list));
+        }
+      } catch {
+        // certificates may be empty for this user
       }
 
       try {
@@ -244,6 +274,58 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
         }
       } catch {
         // keep mock tasks
+      }
+
+      try {
+        const apiEvents = await mitraEventsService.listMine();
+        const list = Array.isArray(apiEvents) ? apiEvents : [];
+        if (mounted && list.length > 0) {
+          setEvents(mapEvents(list));
+        }
+      } catch {
+        // keep mock events
+      }
+
+      try {
+        const logs = await maintenanceLogsService.list({ mine: true });
+        const list = Array.isArray(logs) ? logs : [];
+        if (mounted && list.length > 0) {
+          setRecentActivities(
+            list.map((log: any) => ({
+              id: log._id,
+              tree: log.treeCode,
+              activity: log.activity,
+              date: log.loggedAt
+                ? new Date(log.loggedAt).toLocaleDateString('en-GB')
+                : new Date(log.createdAt || Date.now()).toLocaleDateString(
+                    'en-GB',
+                  ),
+            })),
+          );
+        }
+      } catch {
+        // keep mock logs
+      }
+
+      try {
+        const issues = await fieldIssuesService.list({ mine: true });
+        const list = Array.isArray(issues) ? issues : [];
+        if (mounted && list.length > 0) {
+          setReportedIssues(
+            list.map((issue: any) => ({
+              id: issue._id,
+              type: issue.type,
+              priority: issue.priority,
+              desc: issue.description,
+              date: issue.createdAt
+                ? new Date(issue.createdAt).toLocaleDateString('en-GB')
+                : new Date().toLocaleDateString('en-GB'),
+              status: issue.status,
+            })),
+          );
+        }
+      } catch {
+        // keep mock issues
       }
 
       try {
@@ -318,27 +400,120 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
     { id: '1', type: 'Water Shortage', priority: 'Medium', desc: 'Ggg', date: '13/07/2026' }
   ]);
 
-  const handleSaveLog = () => {
-    const newActivity = {
+  const handleSaveLog = async () => {
+    const optimistic = {
       id: Date.now().toString(),
       tree: selectedTree,
       activity: selectedActivity,
-      date: new Date().toLocaleDateString('en-GB') // DD/MM/YYYY format
+      date: new Date().toLocaleDateString('en-GB'),
     };
-    setRecentActivities([newActivity, ...recentActivities]);
+    setRecentActivities([optimistic, ...recentActivities]);
+    const note = remarks;
     setRemarks('');
+    try {
+      const saved: any = await maintenanceLogsService.create({
+        treeCode: selectedTree,
+        activity: selectedActivity,
+        remarks: note || undefined,
+      });
+      if (saved?._id) {
+        setRecentActivities(prev =>
+          prev.map(item =>
+            item.id === optimistic.id
+              ? {
+                  id: saved._id,
+                  tree: saved.treeCode || selectedTree,
+                  activity: saved.activity || selectedActivity,
+                  date: saved.loggedAt
+                    ? new Date(saved.loggedAt).toLocaleDateString('en-GB')
+                    : optimistic.date,
+                }
+              : item,
+          ),
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Save failed',
+        error instanceof ApiError
+          ? error.message
+          : 'Could not save maintenance log',
+      );
+    }
   };
 
-  const handleSubmitIssue = () => {
-    const newIssue = {
+  const handleSubmitIssue = async () => {
+    if (!issueDesc.trim()) {
+      Alert.alert('Required', 'Please describe the issue.');
+      return;
+    }
+    const optimistic = {
       id: Date.now().toString(),
       type: selectedIssueType,
       priority: selectedPriority,
       desc: issueDesc,
-      date: new Date().toLocaleDateString('en-GB')
+      date: new Date().toLocaleDateString('en-GB'),
+      status: 'Open',
     };
-    setReportedIssues([newIssue, ...reportedIssues]);
+    setReportedIssues([optimistic, ...reportedIssues]);
+    const desc = issueDesc;
     setIssueDesc('');
+    try {
+      const saved: any = await fieldIssuesService.create({
+        type: selectedIssueType,
+        priority: selectedPriority,
+        description: desc,
+      });
+      if (saved?._id) {
+        setReportedIssues(prev =>
+          prev.map(item =>
+            item.id === optimistic.id
+              ? {
+                  id: saved._id,
+                  type: saved.type || selectedIssueType,
+                  priority: saved.priority || selectedPriority,
+                  desc: saved.description || desc,
+                  date: saved.createdAt
+                    ? new Date(saved.createdAt).toLocaleDateString('en-GB')
+                    : optimistic.date,
+                  status: saved.status || 'Open',
+                }
+              : item,
+          ),
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Submit failed',
+        error instanceof ApiError
+          ? error.message
+          : 'Could not submit field issue',
+      );
+    }
+  };
+
+  const handleMarkAttendance = async (eventId: string) => {
+    setMarkingEventId(eventId);
+    try {
+      await mitraEventsService.markAttendance(eventId);
+      setEvents(prev =>
+        prev.map(event =>
+          event.id === eventId
+            ? { ...event, attendanceMarked: true }
+            : event,
+        ),
+      );
+      Alert.alert('Attendance marked', 'Your attendance has been recorded.');
+    } catch (error) {
+      Alert.alert(
+        'Attendance failed',
+        error instanceof ApiError
+          ? error.message
+          : 'Could not mark attendance',
+      );
+    } finally {
+      setMarkingEventId(null);
+    }
   };
 
   return (
@@ -778,7 +953,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
         {/* TAB CONTENT (EVENTS) */}
         {activeTab === 'Events' && (
           <View style={styles.tabContent}>
-            {EVENTS.map((event) => (
+            {events.map((event) => (
               <View key={event.id} style={styles.taskCard}>
 
                 <View style={[styles.taskHeaderRow, { marginBottom: 16 }]}>
@@ -807,8 +982,15 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
                       <Text style={[styles.taskBtnText, { marginLeft: 0 }]}>Attendance ✓</Text>
                     </Pressable>
                   ) : (
-                    <Pressable style={[styles.taskBtn, styles.taskBtnOutline]}>
-                      <Text style={styles.taskBtnOutlineText}>Mark Attendance</Text>
+                    <Pressable
+                      style={[styles.taskBtn, styles.taskBtnOutline]}
+                      disabled={markingEventId === event.id}
+                      onPress={() => handleMarkAttendance(event.id)}>
+                      <Text style={styles.taskBtnOutlineText}>
+                        {markingEventId === event.id
+                          ? 'Marking...'
+                          : 'Mark Attendance'}
+                      </Text>
                     </Pressable>
                   )}
                 </View>
@@ -1102,23 +1284,37 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
                       { borderColor: '#e5e7eb' },
                     ]}
                     onPress={async () => {
-                      const text = encodeURIComponent(
-                        `Paryavaran Prahri Certificate\n${cert.title}\n${cert.subtitle}${
-                          (cert as any).code
-                            ? `\nCode: ${(cert as any).code}`
-                            : ''
-                        }\nVerify: /api/v1/certificates/verify/${
-                          (cert as any).code || ''
-                        }`,
-                      );
-                      const url = `https://wa.me/?text=${text}`;
                       try {
-                        await Linking.openURL(url);
-                      } catch {
-                        Alert.alert(
-                          'Share failed',
-                          'Could not open WhatsApp on this device.',
+                        const result: any = await certificatesService.shareWhatsapp(
+                          cert.id,
                         );
+                        if (result?.success === false) {
+                          throw new Error(
+                            result.error || 'WhatsApp share failed',
+                          );
+                        }
+                        Alert.alert(
+                          'Shared',
+                          'Certificate share was sent via WhatsApp.',
+                        );
+                      } catch (error) {
+                        const text = encodeURIComponent(
+                          `Paryavaran Prahri Certificate\n${cert.title}\n${cert.subtitle}${
+                            (cert as any).code
+                              ? `\nCode: ${(cert as any).code}`
+                              : ''
+                          }`,
+                        );
+                        try {
+                          await Linking.openURL(`https://wa.me/?text=${text}`);
+                        } catch {
+                          Alert.alert(
+                            'Share failed',
+                            error instanceof ApiError
+                              ? error.message
+                              : 'Could not share certificate on WhatsApp.',
+                          );
+                        }
                       }
                     }}>
                     <Text

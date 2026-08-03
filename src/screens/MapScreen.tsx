@@ -155,6 +155,17 @@ export default function MapScreen() {
       }
 
       try {
+        const mapsConfig = await mapsService.getConfig();
+        if (__DEV__ && mapsConfig?.enabled) {
+          console.log(
+            'Google Maps key available via /maps/config (native tiles not wired yet)',
+          );
+        }
+      } catch {
+        // optional maps provider config
+      }
+
+      try {
         const mapsRes = await mapsService.list({
           page: 1,
           limit: 50,

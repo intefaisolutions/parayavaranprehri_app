@@ -68,6 +68,10 @@ export const certificatesService = {
     return apiRequest(`/certificates/mitra/${encodeURIComponent(mitraId)}`);
   },
 
+  listMine() {
+    return apiRequest('/certificates/me');
+  },
+
   issue(payload: CreateCertificatePayload) {
     return apiRequest('/certificates', { method: 'POST', body: payload });
   },

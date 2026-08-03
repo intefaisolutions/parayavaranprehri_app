@@ -8,6 +8,7 @@ export type AuthUser = {
   phone?: string;
   district?: string;
   state?: string;
+  avatar?: string;
 };
 
 export type TokenPair = {

@@ -38,6 +38,24 @@ export type { Person, PersonIdentity } from './services/persons.service';
 export { leadersService, partnersService } from './services/leaders.service';
 export type { Leader, Partner } from './services/leaders.service';
 export { uploadsService, mediaService } from './services/uploads.service';
+export { journeyService } from './services/journey.service';
+export type {
+  JourneyTimeline,
+  JourneyAchievementApi,
+  JourneyProfileApi,
+} from './services/journey.service';
+export { mitraEventsService } from './services/mitraEvents.service';
+export type { MitraEventApi } from './services/mitraEvents.service';
+export { fieldIssuesService } from './services/fieldIssues.service';
+export type {
+  FieldIssueApi,
+  CreateFieldIssuePayload,
+} from './services/fieldIssues.service';
+export { maintenanceLogsService } from './services/maintenanceLogs.service';
+export type {
+  MaintenanceLogApi,
+  CreateMaintenanceLogPayload,
+} from './services/maintenanceLogs.service';
 export {
   mapsService,
   locationsService,
