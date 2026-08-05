@@ -41,12 +41,43 @@ export type PersonIdentity = {
   status?: string;
 };
 
+export type PersonMe = Person & {
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  vidhanSabha?: string | null;
+  linkedVehicles?: number;
+  treesAssigned?: number;
+  co2OffsetKg?: number;
+  joinedAt?: string | Date | null;
+};
+
+export type PersonStats = {
+  personId: string;
+  name: string;
+  mobile: string;
+  address: string | null;
+  vidhanSabha: string | null;
+  linkedVehicles: number;
+  treesAssigned: number;
+  co2OffsetKg: number;
+  joinedAt: string | Date | null;
+};
+
 export const personsService = {
   selfRegister(payload: PersonPayload) {
     return apiRequest<Person>('/persons/self-register', {
       method: 'POST',
       body: payload,
     });
+  },
+
+  getMe() {
+    return apiRequest<PersonMe>('/persons/me');
+  },
+
+  getMyStats() {
+    return apiRequest<PersonStats>('/persons/me/stats');
   },
 
   getById(id: string) {

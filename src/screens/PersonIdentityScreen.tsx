@@ -15,7 +15,7 @@ import {
   getStoredPhone,
   getStoredUser,
   personIdentityService,
-  treesService,
+  personsService,
   unwrapList,
   usersService,
   vehiclesService,
@@ -34,14 +34,25 @@ type LinkedVehicle = {
   icon: 'car-side' | 'car-pickup';
 };
 
-const FALLBACK_GRID = [
-  { label: 'ADDRESS', value: 'Indore, Madhya Pradesh' },
-  { label: 'VIDHAN SABHA', value: 'Rau' },
+const EMPTY_GRID = [
+  { label: 'ADDRESS', value: '—' },
+  { label: 'VIDHAN SABHA', value: '—' },
   { label: 'LINKED VEHICLES', value: '0' },
   { label: 'TREES ASSIGNED', value: '0' },
   { label: 'CO₂ OFFSET', value: '—' },
   { label: 'JOINED', value: '—' },
 ];
+
+function formatJoined(value: string | Date | null | undefined) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 export default function PersonIdentityScreen({ onBack }: Props) {
   const [loading, setLoading] = useState(true);
@@ -50,24 +61,33 @@ export default function PersonIdentityScreen({ onBack }: Props) {
   const [phone, setPhone] = useState('');
   const [personId, setPersonId] = useState('—');
   const [linkedVehicles, setLinkedVehicles] = useState<LinkedVehicle[]>([]);
-  const [grid, setGrid] = useState(FALLBACK_GRID);
+  const [grid, setGrid] = useState(EMPTY_GRID);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [user, storedPhone, vehicles, identities] = await Promise.all([
-          getStoredUser(),
-          getStoredPhone(),
-          vehiclesService.list().catch(() => []),
-          personIdentityService.list({ page: 1, limit: 20 }).catch(() => []),
-        ]);
+        const [user, storedPhone, vehicles, identities, personMe, personStats] =
+          await Promise.all([
+            getStoredUser(),
+            getStoredPhone(),
+            vehiclesService.list().catch(() => []),
+            personIdentityService.list({ page: 1, limit: 20 }).catch(() => []),
+            personsService.getMe().catch(() => null),
+            personsService.getMyStats().catch(() => null),
+          ]);
 
-        const phoneVal = storedPhone || user?.phone || '';
-        const nameVal = user
-          ? `${user.firstName} ${user.lastName}`.trim()
-          : 'Citizen';
+        const phoneVal =
+          personMe?.mobile ||
+          personStats?.mobile ||
+          storedPhone ||
+          user?.phone ||
+          '';
+        const nameVal =
+          personMe?.name ||
+          personStats?.name ||
+          (user ? `${user.firstName} ${user.lastName}`.trim() : 'Citizen');
 
         const vehicleList = Array.isArray(vehicles) ? vehicles : [];
         const mappedVehicles = vehicleList.map(mapApiVehicleToUi);
@@ -80,36 +100,31 @@ export default function PersonIdentityScreen({ onBack }: Props) {
             : 'car-side') as 'car-side' | 'car-pickup',
         }));
 
-        let treeCount = 0;
-        if (phoneVal) {
-          try {
-            const grouped = await treesService.listByMobile(phoneVal);
-            if (Array.isArray(grouped)) {
-              treeCount = grouped.reduce((sum: number, g: any) => {
-                if (Array.isArray(g?.trees)) return sum + g.trees.length;
-                return sum + 1;
-              }, 0);
-            }
-          } catch {
-            // ignore
-          }
-        }
-
         const idList = unwrapList(identities as any) as PersonIdentity[];
         const match: PersonIdentity | null =
           idList.find(i =>
             Boolean(
               i.personMobile &&
                 phoneVal &&
-                i.personMobile.replace(/\D/g, '').endsWith(phoneVal),
+                i.personMobile.replace(/\D/g, '').endsWith(
+                  String(phoneVal).replace(/\D/g, ''),
+                ),
             ),
-          ) || idList[0] || null;
+          ) ||
+          idList[0] ||
+          null;
 
         if (!mounted) return;
 
         setDisplayName(match?.personName || nameVal);
         setPhone(match?.personMobile || phoneVal || '—');
-        setPersonId(match?.identityId || user?.id || '—');
+        setPersonId(
+          personMe?.personId ||
+            personStats?.personId ||
+            match?.identityId ||
+            user?.id ||
+            '—',
+        );
         setIdentity(match);
         setLinkedVehicles(
           linked.length
@@ -123,30 +138,43 @@ export default function PersonIdentityScreen({ onBack }: Props) {
                 },
               ],
         );
+
+        const address =
+          personStats?.address ||
+          personMe?.address ||
+          [personMe?.city, personMe?.state].filter(Boolean).join(', ') ||
+          [user?.district, user?.state].filter(Boolean).join(', ') ||
+          '—';
+        const trees =
+          personStats?.treesAssigned ??
+          personMe?.treesAssigned ??
+          0;
+        const linkedCount =
+          personStats?.linkedVehicles ??
+          personMe?.linkedVehicles ??
+          mappedVehicles.length;
+        const co2 =
+          personStats?.co2OffsetKg ?? personMe?.co2OffsetKg;
+        const vidhan =
+          personStats?.vidhanSabha || personMe?.vidhanSabha || '—';
+        const joined =
+          personStats?.joinedAt ||
+          personMe?.joinedAt ||
+          match?.generatedDate;
+
         setGrid([
+          { label: 'ADDRESS', value: String(address || '—') },
+          { label: 'VIDHAN SABHA', value: String(vidhan || '—') },
+          { label: 'LINKED VEHICLES', value: String(linkedCount) },
+          { label: 'TREES ASSIGNED', value: String(trees) },
           {
-            label: 'ADDRESS',
-            value: user?.district
-              ? `${user.district}${user.state ? `, ${user.state}` : ''}`
-              : 'Indore, Madhya Pradesh',
+            label: 'CO₂ OFFSET',
+            value:
+              typeof co2 === 'number' ? `${Math.round(co2)} kg` : '—',
           },
-          { label: 'VIDHAN SABHA', value: '—' },
-          { label: 'LINKED VEHICLES', value: String(mappedVehicles.length) },
-          { label: 'TREES ASSIGNED', value: String(treeCount) },
-          { label: 'CO₂ OFFSET', value: '—' },
-          {
-            label: 'JOINED',
-            value: match?.generatedDate
-              ? new Date(match.generatedDate).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })
-              : '—',
-          },
+          { label: 'JOINED', value: formatJoined(joined) },
         ]);
 
-        // Touch users/me/vehicles if available (insurance proxy)
         try {
           await usersService.getMyVehicles();
         } catch {

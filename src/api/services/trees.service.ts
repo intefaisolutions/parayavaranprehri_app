@@ -42,6 +42,23 @@ export const treesService = {
     return apiRequest<ApiTree>(`/trees/${id}`);
   },
 
+  getAnalytics(id: string) {
+    return apiRequest<{
+      treeId?: string;
+      species?: string;
+      status?: string;
+      plantedDate?: string;
+      height?: number | null;
+      oxygenKg?: number;
+      co2Kg?: number;
+      monthlyPhotos?: string[];
+      progress?: number;
+      vehicleNumber?: string | null;
+      vidhanSabha?: string | null;
+      treeAgeYears?: number;
+    }>(`/trees/${id}/analytics`);
+  },
+
   update(id: string, payload: Partial<CreateTreePayload>) {
     return apiRequest<ApiTree>(`/trees/${id}`, {
       method: 'PUT',

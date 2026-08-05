@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { NEWS_ITEMS, NewsItem, TAG_STYLES, NewsTag } from '../data/newsData';
+import { NewsItem, TAG_STYLES, NewsTag } from '../data/newsData';
 import {
   ApiError,
   newsService,
@@ -62,7 +62,7 @@ function mapApiNews(items: NewsItemApi[]): NewsItem[] {
 }
 
 export default function NewsScreen({ onBack }: Props) {
-  const [items, setItems] = useState<NewsItem[]>(NEWS_ITEMS);
+  const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -83,12 +83,21 @@ export default function NewsScreen({ onBack }: Props) {
         const data = await staticDataService.getNews();
         if (mounted && Array.isArray(data) && data.length > 0) {
           setItems(mapStaticNews(data));
+        } else if (mounted) {
+          setItems([]);
         }
       } catch (error) {
         try {
           const data = await staticDataService.getNews();
           if (mounted && Array.isArray(data) && data.length > 0) {
             setItems(mapStaticNews(data));
+          } else if (mounted) {
+            setErrorMsg(
+              error instanceof ApiError
+                ? error.message
+                : 'Failed to load news',
+            );
+            setItems([]);
           }
         } catch {
           if (mounted) {
@@ -97,6 +106,7 @@ export default function NewsScreen({ onBack }: Props) {
                 ? error.message
                 : 'Failed to load news',
             );
+            setItems([]);
           }
         }
       } finally {
@@ -136,8 +146,11 @@ export default function NewsScreen({ onBack }: Props) {
             { paddingBottom: getBottomInset(32) },
           ]}
           showsVerticalScrollIndicator={false}>
-          <Text style={styles.statusLabel}>Admin Managed · Coming soon</Text>
+          <Text style={styles.statusLabel}>From News CMS</Text>
           {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : null}
+          {!errorMsg && items.length === 0 ? (
+            <Text style={styles.emptyText}>No published news yet.</Text>
+          ) : null}
 
           {items.map(item => {
             const tagStyle = TAG_STYLES[item.tag];
@@ -282,5 +295,11 @@ const styles = StyleSheet.create({
     color: '#d32f2f',
     fontSize: 12,
     marginBottom: 8,
+  },
+  emptyText: {
+    color: '#6b7280',
+    fontSize: 13,
+    marginBottom: 12,
+    textAlign: 'center',
   },
 });

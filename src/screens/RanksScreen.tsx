@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   Modal,
   Pressable,
@@ -12,113 +13,153 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, staticDataService } from '../api';
+import {
+  ApiError,
+  leaderboardService,
+  type LeaderboardEntry,
+  type LeaderboardScope,
+} from '../api';
 
 const { width } = Dimensions.get('window');
 
-const CATEGORIES = ['Vidhan Sabha', 'State', 'Brand', 'Model', 'Fuel'];
+const CATEGORIES = ['Vidhan Sabha', 'State', 'City'];
 
-const SUB_FILTERS: Record<string, string[]> = {
-  'Vidhan Sabha': ['All', 'Indore-1', 'Indore-2', 'Indore-3', 'Indore-4', 'Indore-5', 'Rau', 'Sanwer', 'Depalpur', 'Mhow'],
-  'State': ['All', 'Madhya Pradesh'],
-  'Brand': ['All', 'Land Rover', 'Mahindra', 'Tata', 'Toyota', 'Kia'],
-  'Model': ['All', 'Defender', 'Thar', 'Nexon EV', 'Fortuner', 'Seltos'],
-  'Fuel': ['All', 'Electric', 'Diesel', 'Petrol', 'CNG'],
+const SCOPE_BY_CATEGORY: Record<string, LeaderboardScope> = {
+  'Vidhan Sabha': 'vidhan-sabha',
+  State: 'state',
+  City: 'city',
 };
 
-const FALLBACK_DATA = [
-  { id: 1, rank: 1, name: 'Aarav', vehicle: 'Land Rover Defender', location: 'Indore', model: 'Defender', fuel: 'Diesel', vidhanSabha: 'Rau', co2: 612, trees: 41, survival: 92 },
-  { id: 4, rank: 2, name: 'Neha', vehicle: 'Tata Nexon EV', location: 'Indore', model: 'Nexon EV', fuel: 'EV', vidhanSabha: 'Rau', co2: 488, trees: 33, survival: 88 },
-  { id: 2, rank: 3, name: 'Rahul', vehicle: 'Land Rover Defender', location: 'Indore', model: 'Defender', fuel: 'Diesel', vidhanSabha: 'Indore-2', co2: 312, trees: 24, survival: 100, isUser: true },
-  { id: 3, rank: 4, name: 'Vikram Singh', vehicle: 'Toyota Fortuner', location: 'Bhopal', model: 'Fortuner', fuel: 'Diesel', vidhanSabha: 'Sanwer', co2: 420, trees: 21, survival: 76 },
-  { id: 5, rank: 5, name: 'Pooja Mehta', vehicle: 'Mahindra Thar', location: 'Indore', model: 'Thar', fuel: 'Diesel', vidhanSabha: 'Indore-1', co2: 250, trees: 19, survival: 85 },
-  { id: 6, rank: 6, name: 'Karthik Rao', vehicle: 'Kia Seltos', location: 'Ujjain', model: 'Seltos', fuel: 'Petrol', vidhanSabha: 'Mhow', co2: 500, trees: 17, survival: 91 },
-];
+type SortBy = 'trees' | 'co2' | 'points';
 
-type SortBy = 'trees' | 'co2' | 'survival';
-
-const SORT_OPTIONS: SortBy[] = ['trees', 'co2', 'survival'];
+const SORT_OPTIONS: SortBy[] = ['trees', 'co2', 'points'];
 
 const SORT_LABELS: Record<SortBy, string> = {
   trees: 'Trees',
   co2: 'CO₂',
-  survival: 'Survival',
+  points: 'Points',
 };
 
-type RankItem = (typeof FALLBACK_DATA)[number] & { isUser?: boolean };
+type RankItem = {
+  id: number;
+  rank: number;
+  name: string;
+  vehicle: string;
+  location: string;
+  model: string;
+  fuel: string;
+  vidhanSabha: string;
+  co2: number;
+  trees: number;
+  survival: number;
+  points: number;
+  isUser?: boolean;
+};
+
+function mapEntry(
+  entry: LeaderboardEntry,
+  index: number,
+  isUser = false,
+): RankItem {
+  return {
+    id: index + 1,
+    rank: entry.rank ?? index + 1,
+    name: entry.name || 'Citizen',
+    vehicle: entry.badge || 'Eco Contributor',
+    location: entry.vidhanSabha || '',
+    model: entry.badge || '',
+    fuel: '',
+    vidhanSabha: entry.vidhanSabha || '',
+    co2: Math.round(entry.co2Kg || 0),
+    trees: entry.trees || 0,
+    survival: Math.min(100, Math.round((entry.points || 0) / 12)),
+    points: entry.points || 0,
+    isUser,
+  };
+}
 
 function getSortValue(item: RankItem, sortBy: SortBy) {
   if (sortBy === 'trees') return item.trees;
   if (sortBy === 'co2') return item.co2;
-  return item.survival;
+  return item.points;
 }
 
 function getScorePrimary(item: RankItem, sortBy: SortBy) {
   if (sortBy === 'trees') return `${item.trees} trees`;
   if (sortBy === 'co2') return `${item.co2} kg`;
-  return `${item.survival}%`;
+  return `${item.points} pts`;
 }
 
 function getScoreSecondary(item: RankItem, sortBy: SortBy) {
   if (sortBy === 'trees') return `${item.co2} kg CO₂`;
   if (sortBy === 'co2') return `${item.trees} trees`;
-  return `${item.co2} kg CO₂`;
+  return `${item.trees} trees`;
 }
 
 export default function RanksScreen() {
-  const [activeCategory, setActiveCategory] = useState('Model');
-  const [activeSubFilter, setActiveSubFilter] = useState('Defender');
+  const [activeCategory, setActiveCategory] = useState('Vidhan Sabha');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('trees');
   const [sortDrawerVisible, setSortDrawerVisible] = useState(false);
-  const [rankData, setRankData] = useState<RankItem[]>(FALLBACK_DATA);
+  const [rankData, setRankData] = useState<RankItem[]>([]);
+  const [myStanding, setMyStanding] = useState<RankItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      setLoading(true);
+      setErrorMsg('');
+      const scope = SCOPE_BY_CATEGORY[activeCategory] || 'vidhan-sabha';
       try {
-        const data = await staticDataService.getGamification();
-        if (
-          mounted &&
-          data?.leaderboard &&
-          Array.isArray(data.leaderboard) &&
-          data.leaderboard.length > 0
-        ) {
-          setRankData(
-            data.leaderboard.map((entry, index) => ({
-              id: index + 1,
-              rank: entry.rank ?? index + 1,
-              name: entry.name,
-              vehicle: entry.level,
-              location: '',
-              model: entry.level,
-              fuel: '',
-              vidhanSabha: '',
-              co2: entry.points,
-              trees: Math.max(1, Math.round(entry.points / 30)),
-              survival: Math.min(100, Math.round(entry.points / 12)),
-              isUser: entry.name.toLowerCase().includes('priya'),
-            })),
-          );
-        }
+        const [board, me] = await Promise.all([
+          leaderboardService.list({ scope, limit: 50 }),
+          leaderboardService.me({ scope }).catch(() => null),
+        ]);
+        if (!mounted) return;
+        const items = Array.isArray(board?.items) ? board.items : [];
+        const myPersonId = me?.personId;
+        const myMobile = me?.mobile;
+        setRankData(
+          items.map((entry, index) =>
+            mapEntry(
+              entry,
+              index,
+              Boolean(
+                (myPersonId && entry.personId === myPersonId) ||
+                  (myMobile &&
+                    entry.mobile &&
+                    entry.mobile === myMobile) ||
+                  (me &&
+                    entry.rank === me.rank &&
+                    entry.name === me.name),
+              ),
+            ),
+          ),
+        );
+        setMyStanding(me ? mapEntry(me, Math.max(0, (me.rank || 1) - 1), true) : null);
       } catch (error) {
-        if (__DEV__) {
-          console.warn(
+        if (mounted) {
+          setRankData([]);
+          setMyStanding(null);
+          setErrorMsg(
             error instanceof ApiError
               ? error.message
-              : 'Failed to load ranks',
+              : 'Failed to load leaderboard',
           );
         }
+      } finally {
+        if (mounted) setLoading(false);
       }
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [activeCategory]);
 
   const handleCategoryChange = (cat: string) => {
     setActiveCategory(cat);
-    setActiveSubFilter('All');
   };
 
   const handleSortSelect = (option: SortBy) => {
@@ -126,19 +167,25 @@ export default function RanksScreen() {
     setSortDrawerVisible(false);
   };
 
-  const filteredData = rankData.filter((item) => {
-    if (activeSubFilter !== 'All') {
-      if (activeCategory === 'Model' && item.model !== activeSubFilter) return false;
-      if (activeCategory === 'Vidhan Sabha' && item.vidhanSabha !== activeSubFilter) return false;
-    }
-    if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) && !item.vehicle.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    return true;
-  }).sort((a, b) => getSortValue(b, sortBy) - getSortValue(a, sortBy));
+  const filteredData = rankData
+    .filter(item => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.vehicle.toLowerCase().includes(q) ||
+        item.vidhanSabha.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => getSortValue(b, sortBy) - getSortValue(a, sortBy));
 
   const top3 = filteredData.slice(0, 3);
   const restList = filteredData.slice(3);
+  const userRank =
+    myStanding?.rank ||
+    (filteredData.findIndex(d => d.isUser) !== -1
+      ? filteredData.findIndex(d => d.isUser) + 1
+      : null);
 
   return (
     <View style={styles.root}>
@@ -167,10 +214,15 @@ export default function RanksScreen() {
         >
           <Text style={styles.standingLabel}>Your standing</Text>
           <Text style={styles.standingTitle}>
-            Among <Text style={styles.highlightText}>{activeSubFilter === 'All' ? 'all' : activeSubFilter}</Text> owners in Indore, your rank is <Text style={styles.highlightText}>#{
-              // Dynamic rank calculation based on filter just for visual effect
-              filteredData.findIndex(d => d.isUser) !== -1 ? filteredData.findIndex(d => d.isUser) + 1 : '?'
-            }</Text>
+            Among{' '}
+            <Text style={styles.highlightText}>{activeCategory}</Text> owners,
+            your rank is{' '}
+            <Text style={styles.highlightText}>
+              #{userRank ?? '?'}
+            </Text>
+            {myStanding
+              ? ` · ${myStanding.trees} trees · ${myStanding.co2}kg CO₂`
+              : ''}
           </Text>
           
           <View style={styles.progressRow}>
@@ -201,26 +253,13 @@ export default function RanksScreen() {
             ))}
           </ScrollView>
 
-          {/* SUB-FILTERS (Row 2) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {SUB_FILTERS[activeCategory].map((subFilter) => (
-              <Pressable
-                key={subFilter}
-                style={[styles.filterPill, activeSubFilter === subFilter && styles.filterPillActiveModel, activeSubFilter !== subFilter && styles.filterPillLight]}
-                onPress={() => setActiveSubFilter(subFilter)}
-              >
-                <Text style={[styles.filterPillText, activeSubFilter === subFilter && styles.filterPillTextActive]}>{subFilter}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
           {/* SEARCH & SORT */}
           <View style={styles.searchRow}>
             <View style={styles.searchBox}>
               <AppIcon name="magnify" size={18} color="#6b7280" />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search owner or vehicle"
+                placeholder="Search owner or vidhan sabha"
                 placeholderTextColor="#9ca3af"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -235,9 +274,14 @@ export default function RanksScreen() {
 
         {/* PODIUM & LIST */}
         <View style={styles.listContainer}>
-          {filteredData.length === 0 ? (
-            <Text style={styles.emptyText}>No users found for this filter.</Text>
-          ) : (
+          {loading ? (
+            <ActivityIndicator size="large" color="#136e35" style={{ marginTop: 24 }} />
+          ) : null}
+          {errorMsg ? <Text style={styles.emptyText}>{errorMsg}</Text> : null}
+          {!loading && filteredData.length === 0 && !errorMsg ? (
+            <Text style={styles.emptyText}>No leaderboard entries yet.</Text>
+          ) : null}
+          {!loading && filteredData.length > 0 ? (
             <>
               {/* PODIUM FOR TOP 3 */}
               {top3.length > 0 && (
@@ -274,7 +318,7 @@ export default function RanksScreen() {
 
               {/* LIST FOR REST */}
               {restList.map((item, index) => (
-                <View key={item.id} style={[styles.leaderboardItem, item.isUser && styles.leaderboardItemUser]}>
+                <View key={`${item.rank}-${item.name}`} style={[styles.leaderboardItem, item.isUser && styles.leaderboardItemUser]}>
                   <View style={[styles.rankCircle, item.isUser && styles.rankCircleUser]}>
                     <Text style={[styles.rankText, item.isUser && styles.rankTextUser]}>#{index + 4}</Text>
                   </View>
@@ -288,7 +332,7 @@ export default function RanksScreen() {
                         </View>
                       )}
                     </View>
-                    <Text style={styles.leaderboardVehicle}>{item.vehicle} · {item.location}</Text>
+                    <Text style={styles.leaderboardVehicle}>{item.vehicle} · {item.location || item.vidhanSabha}</Text>
                   </View>
 
                   <View style={styles.leaderboardScoreRight}>
@@ -305,7 +349,7 @@ export default function RanksScreen() {
                 </View>
               ))}
             </>
-          )}
+          ) : null}
         </View>
 
       </ScrollView>

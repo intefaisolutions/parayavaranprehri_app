@@ -20,11 +20,10 @@ import {
   ApiError,
   certificatesService,
   fieldIssuesService,
-  getStoredPhone,
+  leaderboardService,
   maintenanceLogsService,
   mitraEventsService,
   mitrasService,
-  staticDataService,
   tasksService,
   treesService,
   unwrapList,
@@ -39,22 +38,6 @@ type Props = {
 };
 
 const TABS = ['Overview', 'Tasks', 'Maintenance', 'Issues', 'Events', 'Leaderboard', 'Certificates'];
-
-const TREES = [
-  { id: 'PM-T-001', name: 'Peepal', status: 'Excellent', color: '#bbf7d0', textColor: '#16a34a' },
-  { id: 'PM-T-002', name: 'Neem', status: 'Good', color: '#dcfce7', textColor: '#22c55e' },
-  { id: 'PM-T-003', name: 'Banyan', status: 'Moderate', color: '#fef08a', textColor: '#ca8a04' },
-  { id: 'PM-T-004', name: 'Mango', status: 'Needs Attention', color: '#ffedd5', textColor: '#ea580c' },
-  { id: 'PM-T-005', name: 'Ashoka', status: 'Good', color: '#dcfce7', textColor: '#22c55e' },
-  { id: 'PM-T-006', name: 'Gulmohar', status: 'Excellent', color: '#bbf7d0', textColor: '#16a34a' },
-];
-
-const INITIAL_TASKS = [
-  { id: 1, title: 'Verify 5 trees in Sector 4', assigned: '2026-06-25', due: '2026-07-05', priority: 'High', priorityBg: '#ffedd5', priorityColor: '#ea580c', progress: 40, status: 'pending', apiId: '' },
-  { id: 2, title: 'Weekly watering round', assigned: '2026-06-28', due: '2026-07-02', priority: 'Medium', priorityBg: '#fef08a', priorityColor: '#a16207', progress: 0, status: 'pending', apiId: '' },
-  { id: 3, title: 'Health check - Banyan grove', assigned: '2026-06-20', due: '2026-06-30', priority: 'Critical', priorityBg: '#ffe4e6', priorityColor: '#e11d48', progress: 75, status: 'pending', apiId: '' },
-  { id: 4, title: 'Plantation monitoring - Zone A', assigned: '2026-06-15', due: '2026-06-28', priority: 'Low', priorityBg: '#dcfce7', priorityColor: '#059669', progress: 100, status: 'completed', apiId: '' },
-];
 
 function priorityStyle(priority?: string) {
   const p = (priority || 'Medium').toLowerCase();
@@ -125,79 +108,37 @@ const PRIORITIES = [
   'Critical',
 ];
 
-const EVENTS = [
-  {
-    id: '1',
-    title: 'Van Mahotsav Plantation',
-    date: '2026-07-05',
-    time: '07:00',
-    location: 'Rau Ground, Indore',
-    organizer: 'Paryavaran Prahri',
-    attendanceMarked: true,
-  },
-  {
-    id: '2',
-    title: 'Monsoon Miyawaki Drive',
-    date: '2026-07-12',
-    time: '06:30',
-    location: 'Bhamori Park',
-    organizer: 'Nagar Nigam - PP',
-    attendanceMarked: true,
-  },
-  {
-    id: '3',
-    title: 'Green Sunday Meetup',
-    date: '2026-07-20',
-    time: '08:00',
-    location: 'Vijay Nagar',
-    organizer: 'Mitra Zone A',
-    attendanceMarked: false,
-  },
-];
-
-const LEADERBOARD = [
-  { id: '1', rank: 1, name: 'Aarav Patel', userId: 'PM-IND-RAU-0011', verified: 132, survival: 96, title: 'Green Guardian' },
-  { id: '2', rank: 2, name: 'Neha Joshi', userId: 'PM-IND-VIJ-0007', verified: 118, survival: 94, title: 'Gold Mitra' },
-  { id: '3', rank: 3, name: 'Vikram Singh', userId: 'PM-IND-DEP-0004', verified: 101, survival: 92, title: 'Gold Mitra' },
-  { id: '4', rank: 4, name: 'Pooja Mehta', userId: 'PM-IND-RAU-0022', verified: 88, survival: 90, title: 'Silver Mitra' },
-  { id: '5', rank: 5, name: 'Karthik Rao', userId: 'PM-IND-MHW-0009', verified: 72, survival: 88, title: 'Silver Mitra' },
-  { id: '6', rank: 6, name: 'Anita Verma', userId: 'PM-IND-SAN-0015', verified: 55, survival: 87, title: 'Bronze Mitra' },
-];
-
-const CERTIFICATES = [
-  {
-    id: '1',
-    title: 'Paryavaran Mitra Certificate',
-    subtitle: 'Official recognition as a field guardian.',
-  },
-  {
-    id: '2',
-    title: 'Volunteer Recognition Certificate',
-    subtitle: 'For active service in your assigned area.',
-  },
-  {
-    id: '3',
-    title: 'Monthly Achievement Certificate',
-    subtitle: 'Best Tree Care - July 2026',
-  }
-];
+type LeaderboardRow = {
+  id: string;
+  rank: number;
+  name: string;
+  userId: string;
+  verified: number;
+  survival: number;
+  title: string;
+};
 
 export default function MitraDashboardScreen({ onLogout }: Props) {
   const [activeTab, setActiveTab] = useState('Overview');
-  const [trees, setTrees] = useState(TREES);
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
-  const [certificates, setCertificates] = useState(CERTIFICATES);
-  const [events, setEvents] = useState(
-    EVENTS.map(e => ({
-      id: e.id,
-      title: e.title,
-      date: e.date,
-      time: e.time,
-      location: e.location,
-      organizer: e.organizer,
-      attendanceMarked: e.attendanceMarked,
-    })),
-  );
+  const [trees, setTrees] = useState<
+    { id: string; name: string; status: string; color: string; textColor: string }[]
+  >([]);
+  const [tasks, setTasks] = useState<ReturnType<typeof mapApiTasks>>([]);
+  const [certificates, setCertificates] = useState<
+    { id: string; title: string; subtitle: string; code?: string }[]
+  >([]);
+  const [events, setEvents] = useState<
+    {
+      id: string;
+      title: string;
+      date: string;
+      time: string;
+      location: string;
+      organizer: string;
+      attendanceMarked: boolean;
+    }[]
+  >([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [mitraName, setMitraName] = useState('Goutam Yadav');
   const [mitraCode, setMitraCode] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
@@ -234,14 +175,11 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const phone = await getStoredPhone();
       try {
-        if (phone) {
-          const mitra = (await mitrasService.getByMobile(phone)) as any;
-          if (mounted && mitra) {
-            setMitraName(mitra.name || mitraName);
-            setMitraCode(mitra.mitraId || '');
-          }
+        const mitra = (await mitrasService.getMe()) as any;
+        if (mounted && mitra) {
+          setMitraName(mitra.name || mitraName);
+          setMitraCode(mitra.mitraId || '');
         }
       } catch {
         // keep defaults
@@ -250,46 +188,42 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
       try {
         const certs = await certificatesService.listMine();
         const list = Array.isArray(certs) ? certs : [];
-        if (mounted && list.length > 0) {
-          setCertificates(mapCerts(list));
-        }
+        if (mounted) setCertificates(mapCerts(list));
       } catch {
         // certificates may be empty for this user
       }
 
       try {
         const apiTrees = await treesService.list();
-        if (mounted && Array.isArray(apiTrees) && apiTrees.length > 0) {
-          setTrees(mapApiTrees(apiTrees));
+        if (mounted && Array.isArray(apiTrees)) {
+          const mapped = mapApiTrees(apiTrees);
+          setTrees(mapped);
+          if (mapped[0]?.id) setSelectedTree(mapped[0].id);
         }
       } catch {
-        // keep mock trees
+        // trees may be empty for this mitra
       }
 
       try {
         const apiTasks = await tasksService.list({ page: 1, limit: 50 });
         const list = unwrapList(apiTasks);
-        if (mounted && list.length > 0) {
-          setTasks(mapApiTasks(list));
-        }
+        if (mounted) setTasks(mapApiTasks(list));
       } catch {
-        // keep mock tasks
+        // tasks may be empty
       }
 
       try {
         const apiEvents = await mitraEventsService.listMine();
         const list = Array.isArray(apiEvents) ? apiEvents : [];
-        if (mounted && list.length > 0) {
-          setEvents(mapEvents(list));
-        }
+        if (mounted) setEvents(mapEvents(list));
       } catch {
-        // keep mock events
+        // events may be empty
       }
 
       try {
         const logs = await maintenanceLogsService.list({ mine: true });
         const list = Array.isArray(logs) ? logs : [];
-        if (mounted && list.length > 0) {
+        if (mounted) {
           setRecentActivities(
             list.map((log: any) => ({
               id: log._id,
@@ -304,13 +238,13 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
           );
         }
       } catch {
-        // keep mock logs
+        // logs may be empty
       }
 
       try {
         const issues = await fieldIssuesService.list({ mine: true });
         const list = Array.isArray(issues) ? issues : [];
-        if (mounted && list.length > 0) {
+        if (mounted) {
           setReportedIssues(
             list.map((issue: any) => ({
               id: issue._id,
@@ -325,13 +259,29 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
           );
         }
       } catch {
-        // keep mock issues
+        // issues may be empty
       }
 
       try {
-        await staticDataService.getGamification();
+        const board = await leaderboardService.list({
+          scope: 'vidhan-sabha',
+          limit: 20,
+        });
+        if (mounted && Array.isArray(board?.items) && board.items.length > 0) {
+          setLeaderboard(
+            board.items.map((entry, index) => ({
+              id: String(entry.personId || entry.rank || index + 1),
+              rank: entry.rank || index + 1,
+              name: entry.name || 'Mitra',
+              userId: entry.badge || entry.mobile || `PM-${index + 1}`,
+              verified: entry.trees || 0,
+              survival: Math.min(100, Math.round((entry.points || 0) / 12)),
+              title: entry.badge || 'Mitra',
+            })),
+          );
+        }
       } catch {
-        // optional leaderboard source
+        // empty until rankings exist
       }
     })();
     return () => {
@@ -382,12 +332,12 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
   };
 
   // Maintenance Form State
-  const [selectedTree, setSelectedTree] = useState(TREES[0].id);
+  const [selectedTree, setSelectedTree] = useState('');
   const [selectedActivity, setSelectedActivity] = useState(ACTIVITY_TYPES[0]);
   const [remarks, setRemarks] = useState('');
-  const [recentActivities, setRecentActivities] = useState([
-    { id: '1', tree: 'PM-T-004', activity: 'Fertilizer', date: '13/07/2026' }
-  ]);
+  const [recentActivities, setRecentActivities] = useState<
+    { id: string; tree: string; activity: string; date: string }[]
+  >([]);
 
   // Dropdown Modal State
   const [dropdownType, setDropdownType] = useState<'tree' | 'activity' | 'issueType' | 'issuePriority' | null>(null);
@@ -396,11 +346,22 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
   const [selectedIssueType, setSelectedIssueType] = useState(ISSUE_TYPES[0]);
   const [selectedPriority, setSelectedPriority] = useState(PRIORITIES[1]);
   const [issueDesc, setIssueDesc] = useState('');
-  const [reportedIssues, setReportedIssues] = useState([
-    { id: '1', type: 'Water Shortage', priority: 'Medium', desc: 'Ggg', date: '13/07/2026' }
-  ]);
+  const [reportedIssues, setReportedIssues] = useState<
+    {
+      id: string;
+      type: string;
+      priority: string;
+      desc: string;
+      date: string;
+      status?: string;
+    }[]
+  >([]);
 
   const handleSaveLog = async () => {
+    if (!selectedTree) {
+      Alert.alert('Required', 'Select a tree first.');
+      return;
+    }
     const optimistic = {
       id: Date.now().toString(),
       tree: selectedTree,
@@ -1011,7 +972,12 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
               </View>
 
               <View style={styles.leaderboardList}>
-                {LEADERBOARD.map((user) => {
+                {leaderboard.length === 0 ? (
+                  <Text style={styles.emptyHint}>
+                    Leaderboard data not available yet.
+                  </Text>
+                ) : null}
+                {leaderboard.map((user) => {
                   let rankColor = '#059669'; // Default green
                   if (user.rank === 1) rankColor = '#f59e0b';
                   else if (user.rank === 2) rankColor = '#8ba1b9'; // Silver/slate
@@ -1029,8 +995,8 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
                       </View>
 
                       <View style={styles.leaderboardStatsCol}>
-                        <Text style={styles.leaderboardStatValue}>{user.verified} verified</Text>
-                        <Text style={styles.leaderboardStatLabel}>{user.survival}% survival</Text>
+                        <Text style={styles.leaderboardStatValue}>{user.verified} trees</Text>
+                        <Text style={styles.leaderboardStatLabel}>{user.title}</Text>
                       </View>
 
                       <View style={styles.leaderboardBadge}>
@@ -2024,5 +1990,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0f766e',
     lineHeight: 18,
+  },
+  emptyHint: {
+    fontSize: 13,
+    color: '#6b7280',
+    paddingVertical: 12,
+    textAlign: 'center',
   },
 });

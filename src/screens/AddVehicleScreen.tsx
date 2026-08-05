@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +16,13 @@ import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { AddedVehicle, generateVehicleId } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, vehiclesService } from '../api';
+import {
+  ApiError,
+  getStoredPhone,
+  getStoredUser,
+  personsService,
+  vehiclesService,
+} from '../api';
 import { mapApiVehicleToUi } from '../api/mappers';
 
 type Props = {
@@ -25,21 +33,22 @@ type Props = {
 
 const TOTAL_STEPS = 5;
 const GRADIENT = ['#0c4820', '#2b964f'];
-const REGISTERED_VEHICLE = {
-  name: 'Land Rover Defender 110',
-  fuel: 'Diesel',
-};
 
 const INSURANCE_OPTIONS = [
   {
     id: 'shieldsure',
     name: 'ShieldSure General',
-    policy: 'POL-49231 · Active till Mar 2026',
+    policy: 'Linked via insurance check',
   },
   {
     id: 'icici',
     name: 'ICICI Lombard',
-    policy: 'POL-77621 · Active till Aug 2026',
+    policy: 'Linked via insurance check',
+  },
+  {
+    id: 'other',
+    name: 'Other / Not listed',
+    policy: 'Will be verified by officer',
   },
 ];
 
@@ -50,11 +59,100 @@ export default function AddVehicleScreen({
 }: Props) {
   const [step, setStep] = useState(1);
   const [vehicleNumber, setVehicleNumber] = useState('');
+  const [vehicleName, setVehicleName] = useState('My Vehicle');
+  const [fuelType, setFuelType] = useState('Petrol');
   const [otp, setOtp] = useState('');
+  const [otpError, setOtpError] = useState('');
   const [selectedInsurance, setSelectedInsurance] = useState('shieldsure');
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState('');
+  const [ownerName, setOwnerName] = useState('Citizen');
+  const [personId, setPersonId] = useState('—');
+  const [phoneHint, setPhoneHint] = useState('');
+  const [registeredVhId, setRegisteredVhId] = useState('');
+  const [treeCount, setTreeCount] = useState(0);
   const otpRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const [user, phone] = await Promise.all([
+        getStoredUser(),
+        getStoredPhone(),
+      ]);
+      if (!mounted) return;
+      if (user) {
+        const full = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (full) setOwnerName(full);
+        if (user.id) setPersonId(user.id);
+      }
+      if (phone) {
+        const digits = phone.replace(/\D/g, '');
+        const last4 = digits.slice(-4);
+        setPhoneHint(
+          digits.length >= 4
+            ? `+91 ••••••${last4}`
+            : `+91 ${phone}`,
+        );
+      }
+      try {
+        const me = await personsService.getMe();
+        if (!mounted || !me) return;
+        if (me.name) setOwnerName(me.name);
+        if (me.personId) setPersonId(me.personId);
+        if (typeof me.treesAssigned === 'number') {
+          setTreeCount(me.treesAssigned);
+        }
+      } catch {
+        // optional person profile
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const insuranceName = useMemo(
+    () =>
+      INSURANCE_OPTIONS.find(o => o.id === selectedInsurance)?.name ||
+      'Insurance',
+    [selectedInsurance],
+  );
+
+  const plateDisplay = vehicleNumber.trim().toUpperCase() || '—';
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+    [],
+  );
+
+  const certMessage = useMemo(
+    () =>
+      [
+        'Paryavaran Prahri — Mission 2047',
+        'Digital Environmental Contribution Certificate',
+        '',
+        `Citizen: ${ownerName}`,
+        `Person ID: ${personId}`,
+        `Vehicle: ${vehicleName} · ${plateDisplay}`,
+        `Insurance: ${insuranceName}`,
+        `Trees: ${treeCount || 'pending assignment'}`,
+        `Date: ${todayLabel}`,
+      ].join('\n'),
+    [
+      ownerName,
+      personId,
+      vehicleName,
+      plateDisplay,
+      insuranceName,
+      treeCount,
+      todayLabel,
+    ],
+  );
 
   const goNext = () => setStep(prev => Math.min(prev + 1, TOTAL_STEPS));
   const goBack = () => {
@@ -62,33 +160,62 @@ export default function AddVehicleScreen({
       onBack();
       return;
     }
+    // Skip OTP step when going back from insurance
+    if (step === 3) {
+      setStep(1);
+      return;
+    }
     setStep(prev => prev - 1);
   };
 
   const handleFetchVerify = () => {
-    if (vehicleNumber.trim().length >= 6) {
-      goNext();
+    const plate = vehicleNumber.trim();
+    if (plate.length < 6) {
+      Alert.alert('Invalid plate', 'Enter a valid vehicle number (min 6 characters).');
+      return;
     }
+    setVehicleNumber(plate.toUpperCase());
+    if (!vehicleName || vehicleName === 'My Vehicle') {
+      setVehicleName(plate.toUpperCase());
+    }
+    setStep(2);
   };
 
-  const handleVerifyOtp = () => {
-    if (otp.length === 4) {
-      goNext();
+  const handleVerifyOtp = async () => {
+    setOtpError('');
+    if (otp.length !== 4) {
+      setOtpError('Enter the 4-digit OTP sent to your RC mobile.');
+      return;
     }
+    const phone = await getStoredPhone();
+    const last4 = (phone || '').replace(/\D/g, '').slice(-4);
+    // Accept login phone last-4 OR static test OTP 1234 (matches backend STATIC_OTP)
+    if (otp === '1234' || (last4 && otp === last4)) {
+      goNext();
+      return;
+    }
+    setOtpError(
+      last4
+        ? `Invalid OTP. Use last 4 digits of your mobile (••••${last4}) or test code 1234.`
+        : 'Invalid OTP. Use test code 1234.',
+    );
   };
 
   const handleRegisterVehicle = async () => {
     if (registering) return;
 
-    const plate =
-      vehicleNumber.trim() ||
-      `MP09 XX ${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const plate = vehicleNumber.trim().toUpperCase();
+    if (plate.length < 6) {
+      setRegisterError('Enter a valid vehicle number first.');
+      return;
+    }
+
     const vhId = generateVehicleId();
     const payload = {
       plate,
-      name: REGISTERED_VEHICLE.name,
+      name: vehicleName.trim() || plate,
       vhId,
-      fuel: REGISTERED_VEHICLE.fuel,
+      fuel: fuelType,
       insuranceId: selectedInsurance,
     };
 
@@ -97,6 +224,7 @@ export default function AddVehicleScreen({
     try {
       const created = await vehiclesService.create(payload);
       const mapped = mapApiVehicleToUi(created);
+      setRegisteredVhId(mapped.vhId || vhId);
       onRegisterVehicle({
         id: mapped.id,
         plate: mapped.plate,
@@ -113,6 +241,26 @@ export default function AddVehicleScreen({
       setRegisterError(message);
     } finally {
       setRegistering(false);
+    }
+  };
+
+  const handleShareCert = async () => {
+    try {
+      await Share.share({ message: certMessage, title: 'Vehicle Certificate' });
+    } catch {
+      Alert.alert('Share failed', 'Could not open share sheet.');
+    }
+  };
+
+  const handleDownloadCert = async () => {
+    // No PDF backend yet — share sheet doubles as save/export on device
+    try {
+      await Share.share({
+        message: certMessage,
+        title: 'Save Vehicle Certificate',
+      });
+    } catch {
+      Alert.alert('Download', 'Certificate text is ready — use Share to save.');
     }
   };
 
@@ -133,6 +281,32 @@ export default function AddVehicleScreen({
               placeholderTextColor="#9ca3af"
               autoCapitalize="characters"
             />
+            <TextInput
+              style={[styles.vehicleInput, { marginTop: 10 }]}
+              value={vehicleName}
+              onChangeText={setVehicleName}
+              placeholder="Vehicle name (e.g. Thar, Nexon)"
+              placeholderTextColor="#9ca3af"
+            />
+            <View style={styles.fuelRow}>
+              {['Petrol', 'Diesel', 'CNG', 'Electric'].map(f => (
+                <Pressable
+                  key={f}
+                  style={[
+                    styles.fuelChip,
+                    fuelType === f && styles.fuelChipActive,
+                  ]}
+                  onPress={() => setFuelType(f)}>
+                  <Text
+                    style={[
+                      styles.fuelChipText,
+                      fuelType === f && styles.fuelChipTextActive,
+                    ]}>
+                    {f}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
             <GradientButton label="Fetch & verify" onPress={handleFetchVerify} />
           </>
         );
@@ -140,8 +314,12 @@ export default function AddVehicleScreen({
       case 2:
         return (
           <>
-            <Text style={styles.cardTitle}>OTP sent to RC mobile</Text>
-            <Text style={styles.cardSubtitle}>+91 • • • • • 2345</Text>
+            <Text style={styles.cardTitle}>Confirm with OTP</Text>
+            <Text style={styles.cardSubtitle}>
+              {phoneHint
+                ? `Enter last 4 digits of ${phoneHint} (or test OTP 1234)`
+                : 'Enter test OTP 1234'}
+            </Text>
             <Pressable style={styles.otpRow} onPress={() => otpRef.current?.focus()}>
               {[0, 1, 2, 3].map(index => (
                 <View
@@ -156,7 +334,10 @@ export default function AddVehicleScreen({
               <TextInput
                 ref={otpRef}
                 value={otp}
-                onChangeText={v => setOtp(v.replace(/\D/g, '').slice(0, 4))}
+                onChangeText={v => {
+                  setOtpError('');
+                  setOtp(v.replace(/\D/g, '').slice(0, 4));
+                }}
                 keyboardType="number-pad"
                 maxLength={4}
                 style={styles.otpHidden}
@@ -164,9 +345,10 @@ export default function AddVehicleScreen({
                 caretHidden
               />
             </Pressable>
+            {otpError ? <Text style={styles.registerError}>{otpError}</Text> : null}
             <GradientButton
               label="Verify"
-              onPress={handleVerifyOtp}
+              onPress={() => void handleVerifyOtp()}
               disabled={otp.length !== 4}
             />
           </>
@@ -177,7 +359,7 @@ export default function AddVehicleScreen({
           <>
             <Text style={styles.cardTitle}>Map insurance</Text>
             <Text style={styles.cardSubtitle}>
-              We will auto-link your active policy.
+              Select your insurer (linked via ShieldSure check when available).
             </Text>
             {INSURANCE_OPTIONS.map(option => {
               const selected = selectedInsurance === option.id;
@@ -193,7 +375,7 @@ export default function AddVehicleScreen({
                     <Text style={styles.insuranceName}>{option.name}</Text>
                     <Text style={styles.insurancePolicy}>{option.policy}</Text>
                   </View>
-                  <Text style={styles.shieldIcon}>{selected ? '🛡️' : '🛡️'}</Text>
+                  <Text style={styles.shieldIcon}>🛡️</Text>
                 </Pressable>
               );
             })}
@@ -211,20 +393,18 @@ export default function AddVehicleScreen({
                   <AppIcon name="car-side" size={36} color="#126e35" />
                 </View>
                 <View style={styles.confirmHeaderText}>
-                  <Text style={styles.confirmVehicleName}>
-                    Land Rover Defender 110
-                  </Text>
+                  <Text style={styles.confirmVehicleName}>{vehicleName}</Text>
                   <Text style={styles.confirmVehicleMeta}>
-                    {vehicleNumber || 'MP09 KK 8810'} · Indore
+                    {plateDisplay} · {ownerName}
                   </Text>
                 </View>
               </View>
               <View style={styles.detailGrid}>
                 {[
-                  { icon: '🛡️', label: 'Insurance', value: 'ShieldSure' },
-                  { icon: '⛽', label: 'Fuel', value: 'Diesel' },
-                  { icon: '🌿', label: 'Vehicle ID', value: 'VH-IND-2026-00094' },
-                  { icon: '📅', label: 'Year', value: '2023' },
+                  { icon: '🛡️', label: 'Insurance', value: insuranceName },
+                  { icon: '⛽', label: 'Fuel', value: fuelType },
+                  { icon: '🌿', label: 'Owner', value: ownerName },
+                  { icon: '📅', label: 'Plate', value: plateDisplay },
                 ].map(item => (
                   <View key={item.label} style={styles.detailCell}>
                     <Text style={styles.detailIcon}>{item.icon}</Text>
@@ -236,7 +416,7 @@ export default function AddVehicleScreen({
             </View>
             <View style={styles.verifyBanner}>
               <Text style={styles.verifyBannerText}>
-                ✓ Vehicle verified · Trees will be auto-assigned by your district
+                ✓ Ready to register · Trees will be auto-assigned by your district
                 green officer.
               </Text>
             </View>
@@ -271,27 +451,39 @@ export default function AddVehicleScreen({
                   Digital Environmental{'\n'}Contribution Certificate
                 </Text>
                 <Text style={styles.certSub}>This is to certify that</Text>
-                <Text style={styles.certName}>Rahul Sharma</Text>
-                <Text style={styles.certId}>Person ID: PP-IND-2026-00045</Text>
+                <Text style={styles.certName}>{ownerName}</Text>
+                <Text style={styles.certId}>Person ID: {personId}</Text>
                 <Text style={styles.certSub}>has successfully registered</Text>
                 <Text style={styles.certVehicle}>
-                  {REGISTERED_VEHICLE.name} · {vehicleNumber || 'MP09 KK 8810'}
+                  {vehicleName} · {plateDisplay}
                 </Text>
                 <Text style={styles.certMeta}>
-                  3 tree(s) assigned · Date 19 June 2026
+                  {treeCount > 0
+                    ? `${treeCount} tree(s) on record`
+                    : 'Trees pending assignment'}{' '}
+                  · {todayLabel}
                 </Text>
+                {registeredVhId ? (
+                  <Text style={styles.certId}>Vehicle ID: {registeredVhId}</Text>
+                ) : null}
                 <Text style={styles.certFooter}>PARYAVARAN PRAHRI IN</Text>
               </View>
             </LinearGradient>
 
             <View style={styles.actionRow}>
-              <Pressable style={styles.actionBtnGreen}>
+              <Pressable
+                style={styles.actionBtnGreen}
+                onPress={() => void handleDownloadCert()}>
                 <Text style={styles.actionBtnTextWhite}>⬇ Download</Text>
               </Pressable>
-              <Pressable style={styles.actionBtnOrange}>
+              <Pressable
+                style={styles.actionBtnOrange}
+                onPress={() => void handleShareCert()}>
                 <Text style={styles.actionBtnTextWhite}>🖨 Print</Text>
               </Pressable>
-              <Pressable style={styles.actionBtnOutline}>
+              <Pressable
+                style={styles.actionBtnOutline}
+                onPress={() => void handleShareCert()}>
                 <Text style={styles.actionBtnTextDark}>↗ Share</Text>
               </Pressable>
             </View>
@@ -534,8 +726,34 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#0a3617',
-    marginBottom: 20,
+    marginBottom: 12,
     letterSpacing: 1,
+  },
+  fuelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  fuelChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f7f2',
+    borderWidth: 1,
+    borderColor: '#dce8df',
+  },
+  fuelChipActive: {
+    backgroundColor: '#126e35',
+    borderColor: '#126e35',
+  },
+  fuelChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  fuelChipTextActive: {
+    color: '#fff',
   },
   otpRow: {
     flexDirection: 'row',

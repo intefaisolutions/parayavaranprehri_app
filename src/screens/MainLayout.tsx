@@ -26,17 +26,19 @@ import {
   Vehicle,
 } from '../data/vehiclesData';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import {
   ApiError,
   authService,
   clearSession,
   getRefreshToken,
+  setMitraFlag,
   usersService,
   vehiclesService,
 } from '../api';
 import { mapApiVehicleToUi, mapInsuranceListToUi } from '../api/mappers';
+import { resolveIsMitra } from '../utils/resolveIsMitra';
 
 type Tab = 'home' | 'vehicles' | 'map' | 'ranks' | 'profile';
 
@@ -62,12 +64,25 @@ export default function MainLayout() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehiclesError, setVehiclesError] = useState('');
-
-  const route = useRoute<RouteProp<RootStackParamList, 'MainLayout'>>();
-  const phoneNumber = route.params?.phoneNumber;
-  const isMitra = phoneNumber === '8817678133';
+  const [isMitra, setIsMitra] = useState(false);
+  const [mitraReady, setMitraReady] = useState(false);
 
   const insets = useSafeAreaInsets();
+
+  const refreshMitraStatus = useCallback(async () => {
+    try {
+      const ok = await resolveIsMitra();
+      setIsMitra(ok);
+    } catch {
+      setIsMitra(false);
+    } finally {
+      setMitraReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMitraStatus();
+  }, [refreshMitraStatus]);
 
   const loadVehicles = useCallback(async () => {
     setLoadingVehicles(true);
@@ -179,6 +194,15 @@ export default function MainLayout() {
   };
 
   const renderScreen = () => {
+    if (!mitraReady && activeTab === 'home') {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#136e35" />
+          <Text style={styles.loadingText}>Loading…</Text>
+        </View>
+      );
+    }
+
     if (loadingVehicles && activeTab === 'vehicles') {
       return (
         <View style={styles.centered}>
@@ -273,7 +297,17 @@ export default function MainLayout() {
       case 'offerLand':
         return <OfferLandScreen onBack={closeOverlay} />;
       case 'mitra':
-        return <MitraScreen onBack={closeOverlay} />;
+        return (
+          <MitraScreen
+            onBack={closeOverlay}
+            onRegistered={async mitraId => {
+              await setMitraFlag(true, mitraId);
+              setIsMitra(true);
+              setActiveTab('home');
+              closeOverlay();
+            }}
+          />
+        );
       case 'support':
         return <SupportScreen onBack={closeOverlay} />;
       case 'news':

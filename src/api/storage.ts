@@ -6,6 +6,8 @@ const KEYS = {
   refreshToken: '@pp/refreshToken',
   user: '@pp/user',
   phone: '@pp/phone',
+  isMitra: '@pp/isMitra',
+  mitraId: '@pp/mitraId',
 } as const;
 
 export async function saveSession(params: {
@@ -23,10 +25,14 @@ export async function saveSession(params: {
 }
 
 export async function clearSession(): Promise<void> {
-  await AsyncStorage.removeItem(KEYS.accessToken);
-  await AsyncStorage.removeItem(KEYS.refreshToken);
-  await AsyncStorage.removeItem(KEYS.user);
-  await AsyncStorage.removeItem(KEYS.phone);
+  await AsyncStorage.multiRemove([
+    KEYS.accessToken,
+    KEYS.refreshToken,
+    KEYS.user,
+    KEYS.phone,
+    KEYS.isMitra,
+    KEYS.mitraId,
+  ]);
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -57,4 +63,25 @@ export async function getStoredUser(): Promise<AuthUser | null> {
 
 export async function getStoredPhone(): Promise<string | null> {
   return AsyncStorage.getItem(KEYS.phone);
+}
+
+export async function setMitraFlag(
+  isMitra: boolean,
+  mitraId?: string | null,
+): Promise<void> {
+  await AsyncStorage.setItem(KEYS.isMitra, isMitra ? '1' : '0');
+  if (mitraId) {
+    await AsyncStorage.setItem(KEYS.mitraId, mitraId);
+  } else if (!isMitra) {
+    await AsyncStorage.removeItem(KEYS.mitraId);
+  }
+}
+
+export async function getMitraFlag(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEYS.isMitra);
+  return v === '1';
+}
+
+export async function getStoredMitraId(): Promise<string | null> {
+  return AsyncStorage.getItem(KEYS.mitraId);
 }

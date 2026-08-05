@@ -130,7 +130,7 @@ function TreeMapPin({ type }: { type: MapTreeType }) {
 
 export default function MapScreen() {
   const [activeFilter, setActiveFilter] = useState('All');
-  const [trees, setTrees] = useState<MapTree[]>(MAP_TREES);
+  const [trees, setTrees] = useState<MapTree[]>([]);
   const [sites, setSites] = useState<MapSite[]>([]);
   const [sourceLabel, setSourceLabel] = useState('Loading map data…');
 
@@ -139,12 +139,15 @@ export default function MapScreen() {
     (async () => {
       let treeCount = 0;
       let siteCount = 0;
+      let pinCount = 0;
 
       try {
         const apiTrees = await treesService.list();
         if (mounted && Array.isArray(apiTrees) && apiTrees.length > 0) {
-          setTrees(mapApiTreesToPins(apiTrees));
+          const pins = mapApiTreesToPins(apiTrees);
+          setTrees(pins);
           treeCount = apiTrees.length;
+          pinCount = pins.length;
         }
       } catch (error) {
         if (__DEV__) {
@@ -191,14 +194,16 @@ export default function MapScreen() {
               typeof s.longitude === 'number',
           );
           if (withCoords.length > 0 && treeCount === 0) {
-            const fakeTrees: ApiTree[] = withCoords.map((s, i) => ({
+            const siteTrees: ApiTree[] = withCoords.map((s, i) => ({
               _id: s.id,
               treeName: s.locationName,
               species: 'Peepal',
               latitude: s.latitude,
               longitude: s.longitude,
             })) as ApiTree[];
-            setTrees(mapApiTreesToPins(fakeTrees));
+            const pins = mapApiTreesToPins(siteTrees);
+            setTrees(pins);
+            pinCount = pins.length;
           }
         }
       } catch (error) {
@@ -210,11 +215,15 @@ export default function MapScreen() {
       }
 
       if (mounted) {
-        setSourceLabel(
-          siteCount > 0
-            ? `${siteCount} plantation site${siteCount === 1 ? '' : 's'} · ${treeCount || trees.length} trees`
-            : `${treeCount || trees.length} trees across Indore Vidhan Sabhas`,
-        );
+        if (siteCount === 0 && pinCount === 0) {
+          setSourceLabel('No plantation sites or trees found');
+        } else if (siteCount > 0) {
+          setSourceLabel(
+            `${siteCount} plantation site${siteCount === 1 ? '' : 's'} · ${pinCount} pins`,
+          );
+        } else {
+          setSourceLabel(`${pinCount} trees across Indore Vidhan Sabhas`);
+        }
       }
     })();
     return () => {

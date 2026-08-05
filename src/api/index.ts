@@ -10,6 +10,10 @@ export {
   getRefreshToken,
   getStoredUser,
   getStoredPhone,
+  setTokens,
+  setMitraFlag,
+  getMitraFlag,
+  getStoredMitraId,
 } from './storage';
 
 export { authService } from './services/auth.service';
@@ -34,7 +38,29 @@ export {
   personsService,
   personIdentityService,
 } from './services/persons.service';
-export type { Person, PersonIdentity } from './services/persons.service';
+export type {
+  Person,
+  PersonIdentity,
+  PersonMe,
+  PersonStats,
+} from './services/persons.service';
+export { leaderboardService } from './services/leaderboard.service';
+export type {
+  LeaderboardEntry,
+  LeaderboardQuery,
+  LeaderboardResponse,
+} from './services/leaderboard.service';
+export { missionProgressService } from './services/missionProgress.service';
+export type { MissionProgress } from './services/missionProgress.service';
+export { geoService } from './services/geo.service';
+export type {
+  ReverseGeocodeResult,
+  ConstituencyItem,
+} from './services/geo.service';
+export type {
+  VehicleTreeItem,
+  VehicleTreesResponse,
+} from './services/vehicles.service';
 export { leadersService, partnersService } from './services/leaders.service';
 export type { Leader, Partner } from './services/leaders.service';
 export { uploadsService, mediaService } from './services/uploads.service';

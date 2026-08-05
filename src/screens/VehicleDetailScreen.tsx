@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -12,32 +14,61 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import AppIcon from '../components/AppIcon';
 import {
   AssignedTree,
-  getVehicleDetailInfo,
 } from '../data/vehicleDetailData';
 import { Vehicle } from '../data/vehiclesData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, treesService, vehiclesService } from '../api';
+import { ApiError, getStoredUser, treesService, vehiclesService } from '../api';
 
 type Props = {
   vehicle: Vehicle;
   onBack: () => void;
 };
 
-const DETAIL_GRID = (
-  info: ReturnType<typeof getVehicleDetailInfo>,
-  vehicle: Vehicle,
-) => [
-  { icon: 'account-outline' as const, label: 'Owner', value: info.owner },
-  { icon: 'shield-check-outline' as const, label: 'Insurance', value: info.insurance },
-  { icon: 'gas-station-outline' as const, label: 'Fuel Type', value: vehicle.fuel },
-  { icon: 'check-decagram-outline' as const, label: 'Status', value: vehicle.status },
-  { icon: 'calendar-outline' as const, label: 'Registered', value: vehicle.regDate },
-  { icon: 'map-marker-outline' as const, label: 'RTO', value: info.rto },
-];
-
 function TreeItem({ tree }: { tree: AssignedTree }) {
-  const [expanded, setExpanded] = useState(tree.id === '1');
+  const [expanded, setExpanded] = useState(false);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [live, setLive] = useState<AssignedTree>(tree);
+
+  useEffect(() => {
+    setLive(tree);
+  }, [tree]);
+
+  const loadAnalytics = async () => {
+    const id = tree.apiId || tree.id;
+    if (!id || loadingAnalytics) return;
+    setLoadingAnalytics(true);
+    try {
+      const a = await treesService.getAnalytics(id);
+      const photos = Array.isArray(a.monthlyPhotos) ? a.monthlyPhotos : [];
+      setLive(prev => ({
+        ...prev,
+        name: a.species || prev.name,
+        status: a.status || prev.status,
+        height:
+          a.height != null ? `${a.height} m` : prev.height,
+        co2:
+          typeof a.co2Kg === 'number' ? `${Math.round(a.co2Kg)}kg CO₂` : prev.co2,
+        progress:
+          typeof a.progress === 'number' ? a.progress / 100 : prev.progress,
+        location: a.vidhanSabha || prev.location,
+        imageUrl: photos[0] || prev.imageUrl,
+        months:
+          photos.length > 0
+            ? photos.map((_, i) => `M${i + 1}`)
+            : prev.months,
+      }));
+    } catch (error) {
+      Alert.alert(
+        'Analytics',
+        error instanceof ApiError
+          ? error.message
+          : 'Could not load tree analytics',
+      );
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
 
   return (
     <View style={styles.treeItem}>
@@ -46,15 +77,15 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
         <Pressable
           style={styles.treeHeader}
           onPress={() => setExpanded(prev => !prev)}>
-          <Image source={{ uri: tree.imageUrl }} style={styles.treeThumb} />
+          <Image source={{ uri: live.imageUrl }} style={styles.treeThumb} />
           <View style={styles.treeHeaderInfo}>
-            <Text style={styles.treeName}>{tree.name}</Text>
+            <Text style={styles.treeName}>{live.name}</Text>
             <Text style={styles.treeMeta}>
-              {tree.treeId} · {tree.plantedDate}
+              {live.treeId} · {live.plantedDate}
             </Text>
           </View>
           <View style={styles.treeStatusBadge}>
-            <Text style={styles.treeStatusText}>{tree.status}</Text>
+            <Text style={styles.treeStatusText}>{live.status}</Text>
           </View>
           <Text style={styles.treeChevron}>{expanded ? '▲' : '▼'}</Text>
         </Pressable>
@@ -62,31 +93,41 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
         {expanded && (
           <View style={styles.treeExpanded}>
             <Text style={styles.treeLocation}>
-              {tree.location} · {tree.height} · {tree.co2}
+              {live.location} · {live.height} · {live.co2}
             </Text>
             <View style={styles.progressTrack}>
               <View
-                style={[styles.progressFill, { width: `${tree.progress * 100}%` }]}
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(100, Math.max(0, live.progress * 100))}%` },
+                ]}
               />
             </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.monthsRow}>
-              {tree.months.map(month => (
+              {live.months.map(month => (
                 <View key={month} style={styles.monthCard}>
                   <Image
-                    source={{ uri: tree.imageUrl }}
+                    source={{ uri: live.imageUrl }}
                     style={styles.monthImage}
                   />
                   <Text style={styles.monthLabel}>{month}</Text>
                 </View>
               ))}
             </ScrollView>
-            <Pressable style={styles.analyticsBtn}>
-              <Text style={styles.analyticsBtnText}>
-                Open full tree analytics →
-              </Text>
+            <Pressable
+              style={styles.analyticsBtn}
+              onPress={() => void loadAnalytics()}
+              disabled={loadingAnalytics}>
+              {loadingAnalytics ? (
+                <ActivityIndicator color="#126e35" />
+              ) : (
+                <Text style={styles.analyticsBtnText}>
+                  Open full tree analytics →
+                </Text>
+              )}
             </Pressable>
           </View>
         )}
@@ -97,13 +138,49 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
 
 export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
   const [detailVehicle, setDetailVehicle] = useState(vehicle);
-  const info = getVehicleDetailInfo(detailVehicle);
-  const [assignedTrees, setAssignedTrees] = useState(info.assignedTrees);
-  const detailGrid = DETAIL_GRID(info, detailVehicle);
+  const [ownerName, setOwnerName] = useState('—');
+  const [insuranceLabel, setInsuranceLabel] = useState('—');
+  const [rtoLabel, setRtoLabel] = useState('—');
+  const [assignedTrees, setAssignedTrees] = useState<AssignedTree[]>([]);
+  const detailGrid = [
+    { icon: 'account-outline' as const, label: 'Owner', value: ownerName },
+    {
+      icon: 'shield-check-outline' as const,
+      label: 'Insurance',
+      value: insuranceLabel,
+    },
+    {
+      icon: 'gas-station-outline' as const,
+      label: 'Fuel Type',
+      value: detailVehicle.fuel,
+    },
+    {
+      icon: 'check-decagram-outline' as const,
+      label: 'Status',
+      value: detailVehicle.status,
+    },
+    {
+      icon: 'calendar-outline' as const,
+      label: 'Registered',
+      value: detailVehicle.regDate,
+    },
+    { icon: 'map-marker-outline' as const, label: 'RTO', value: rtoLabel },
+  ];
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      try {
+        const user = await getStoredUser();
+        if (mounted && user) {
+          const full = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+          if (full) setOwnerName(full);
+          const loc = [user.district, user.state].filter(Boolean).join(', ');
+          if (loc) setRtoLabel(loc);
+        }
+      } catch {
+        // keep —
+      }
       try {
         const apiVehicle = await vehiclesService.getById(vehicle.id);
         if (mounted && apiVehicle) {
@@ -114,6 +191,18 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
             fuel: apiVehicle.fuel || prev.fuel,
             vhId: apiVehicle.vhId || prev.vhId,
           }));
+          const anyV = apiVehicle as Record<string, unknown>;
+          if (anyV.insurance || anyV.insuranceId) {
+            setInsuranceLabel(
+              String(anyV.insurance || anyV.insuranceId || '—'),
+            );
+          }
+          if (anyV.rto || anyV.city || anyV.state) {
+            setRtoLabel(
+              [anyV.rto || anyV.city, anyV.state].filter(Boolean).join(', ') ||
+                '—',
+            );
+          }
         }
       } catch (error) {
         if (__DEV__) {
@@ -125,39 +214,34 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
         }
       }
       try {
-        const allTrees = await treesService.list();
-        if (mounted && Array.isArray(allTrees)) {
-          const plate = vehicle.plate.replace(/\s/g, '').toUpperCase();
-          const matched = allTrees.filter((t: any) => {
-            const vn = String(t.vehicleNumber || '')
-              .replace(/\s/g, '')
-              .toUpperCase();
-            return vn && vn === plate;
-          });
-          if (matched.length > 0) {
-            setAssignedTrees(
-              matched.map((t: any, index: number) => ({
-                id: String(index + 1),
-                name: t.species || t.treeName || 'Tree',
-                treeId: t.treeId || t._id,
-                plantedDate: t.plantedDate
-                  ? new Date(t.plantedDate).toLocaleDateString('en-GB')
+        const treeRes = await vehiclesService.getTrees(vehicle.id);
+        if (mounted && treeRes?.trees) {
+          setAssignedTrees(
+            treeRes.trees.map((t, index) => ({
+              id: String(t._id || index + 1),
+              apiId: String(t._id || ''),
+              name: t.species || t.treeName || 'Tree',
+              treeId: t.treeId || String(t._id || ''),
+              plantedDate: t.plantedDate
+                ? new Date(t.plantedDate).toLocaleDateString('en-GB')
+                : '—',
+              status: t.status || 'HEALTHY',
+              location: t.vidhanSabha || '—',
+              height: t.height != null ? `${t.height} m` : '—',
+              co2:
+                typeof t.co2Kg === 'number'
+                  ? `${Math.round(t.co2Kg)}kg CO₂`
                   : '—',
-                status: t.status || 'HEALTHY',
-                location: t.location || t.city || '—',
-                height: t.height ? `${t.height} ft` : '—',
-                co2: '—',
-                progress: 0.6,
-                imageUrl:
-                  t.image ||
-                  'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=200',
-                months: ['M1', 'M2', 'M3', 'M4'],
-              })),
-            );
-          }
+              progress: 0.5,
+              imageUrl:
+                t.image ||
+                'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=200',
+              months: ['M1', 'M2', 'M3', 'M4'],
+            })),
+          );
         }
       } catch {
-        // keep mock trees
+        if (mounted) setAssignedTrees([]);
       }
     })();
     return () => {
@@ -254,9 +338,15 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
 
         <View style={styles.timeline}>
           <View style={styles.timelineLine} />
-          {assignedTrees.map(tree => (
-            <TreeItem key={tree.id} tree={tree} />
-          ))}
+          {assignedTrees.length === 0 ? (
+            <Text style={styles.emptyTrees}>
+              No trees assigned to this vehicle yet.
+            </Text>
+          ) : (
+            assignedTrees.map(tree => (
+              <TreeItem key={tree.id} tree={tree} />
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -430,6 +520,12 @@ const styles = StyleSheet.create({
   timeline: {
     position: 'relative',
     paddingLeft: 8,
+  },
+  emptyTrees: {
+    fontSize: 13,
+    color: '#6b7280',
+    paddingVertical: 16,
+    paddingLeft: 20,
   },
   timelineLine: {
     position: 'absolute',

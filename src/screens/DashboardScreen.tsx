@@ -112,9 +112,14 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 import { colors } from '../theme/colors';
 import {
   getStoredUser,
+  leaderboardService,
   leadersService,
+  missionProgressService,
+  personsService,
   unwrapList,
+  usersService,
   type Leader,
+  type LeaderboardEntry,
 } from '../api';
 
 const { width } = Dimensions.get('window');
@@ -197,15 +202,94 @@ export default function DashboardScreen({
   onAdminPreview,
 }: DashboardScreenProps) {
   const stats = computeProfileStats(vehicles);
-  const [displayName, setDisplayName] = useState('Rahul Sharma');
+  const [displayName, setDisplayName] = useState('Citizen');
+  const [locationLabel, setLocationLabel] = useState('Madhya Pradesh');
+  const [nameInitials, setNameInitials] = useState('PP');
   const [leaders, setLeaders] = useState<LeaderCard[]>(INITIATIVE_LEADERS);
+  const [missionPercent, setMissionPercent] = useState(14);
+  const [missionLabel, setMissionLabel] = useState(String(new Date().getFullYear()));
+  const [missionTargetYear, setMissionTargetYear] = useState(2047);
+  const [contributionCo2, setContributionCo2] = useState(stats.totalCo2);
+  const [topContributors, setTopContributors] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardTitle, setLeaderboardTitle] = useState(
+    'Top Eco Contributors',
+  );
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       const user = await getStoredUser();
       if (mounted && user) {
-        setDisplayName(`${user.firstName} ${user.lastName}`.trim());
+        const full = `${user.firstName} ${user.lastName}`.trim();
+        if (full) {
+          setDisplayName(full);
+          const parts = full.split(/\s+/);
+          setNameInitials(
+            parts.length >= 2
+              ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+              : full.slice(0, 2).toUpperCase(),
+          );
+        }
+        const loc = [user.district, user.state].filter(Boolean).join(', ');
+        if (loc) setLocationLabel(loc);
+      }
+      try {
+        const me = (await usersService.getMe()) as Record<string, unknown>;
+        if (mounted && me) {
+          const full = `${me.firstName || ''} ${me.lastName || ''}`.trim();
+          if (full) {
+            setDisplayName(full);
+            const parts = full.split(/\s+/);
+            setNameInitials(
+              parts.length >= 2
+                ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+                : full.slice(0, 2).toUpperCase(),
+            );
+          }
+          const loc = [me.district, me.state].filter(Boolean).join(', ');
+          if (loc) setLocationLabel(String(loc));
+        }
+      } catch {
+        // keep stored profile
+      }
+      try {
+        const personStats = await personsService.getMyStats();
+        if (mounted && personStats) {
+          if (typeof personStats.co2OffsetKg === 'number') {
+            setContributionCo2(Math.round(personStats.co2OffsetKg));
+          }
+          if (personStats.vidhanSabha) {
+            setLocationLabel(personStats.vidhanSabha);
+            setLeaderboardTitle(
+              `Top Eco Contributors · ${personStats.vidhanSabha}`,
+            );
+          } else if (personStats.address) {
+            setLocationLabel(personStats.address);
+          }
+        }
+      } catch {
+        // person profile may not exist yet
+      }
+      try {
+        const progress = await missionProgressService.get();
+        if (mounted && progress) {
+          setMissionPercent(Number(progress.percent) || 0);
+          if (progress.label) setMissionLabel(progress.label);
+          if (progress.targetYear) setMissionTargetYear(progress.targetYear);
+        }
+      } catch {
+        // keep default mission progress
+      }
+      try {
+        const board = await leaderboardService.list({
+          scope: 'vidhan-sabha',
+          limit: 3,
+        });
+        if (mounted && Array.isArray(board?.items)) {
+          setTopContributors(board.items.slice(0, 3));
+        }
+      } catch {
+        // keep empty / static section hidden via length check
       }
       try {
         const res = await leadersService.list({
@@ -251,14 +335,14 @@ export default function DashboardScreen({
           <View style={styles.headerRow}>
             <View style={styles.profileInfo}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>RS</Text>
+                <Text style={styles.avatarText}>{nameInitials}</Text>
               </View>
               <View style={styles.nameBlock}>
                 <Text style={styles.greeting}>Namaste 🙏</Text>
                 <Text style={styles.name}>{displayName}</Text>
                 <View style={styles.locationRow}>
                   <AppIcon name="map-marker-outline" size={12} color="#b2e3c6" />
-                  <Text style={styles.locationText}>Rau Vidhan Sabha, Indore</Text>
+                  <Text style={styles.locationText}>{locationLabel}</Text>
                 </View>
               </View>
             </View>
@@ -273,7 +357,7 @@ export default function DashboardScreen({
             <Text style={styles.contributionLabel}>YOUR CONTRIBUTION THIS YEAR</Text>
             <View style={styles.contributionRow}>
               <Text style={styles.contributionValue}>
-                {stats.totalCo2} kg CO<Text style={styles.subscript}>2</Text> offset
+                {contributionCo2} kg CO<Text style={styles.subscript}>2</Text> offset
               </Text>
               <View style={styles.verifiedBadge}>
                 <Text style={styles.verifiedText}>✓ Verified</Text>
@@ -302,7 +386,7 @@ export default function DashboardScreen({
             </View>
 
             <Text style={styles.missionTitle}>
-              By <Text style={styles.textHighlight}>2047</Text>, India will celebrate <Text style={styles.textHighlight}>100 years of independence</Text> by creating its first <Text style={styles.textHighlight}>Net Zero Carbon City.</Text>
+              By <Text style={styles.textHighlight}>{missionTargetYear}</Text>, India will celebrate <Text style={styles.textHighlight}>100 years of independence</Text> by creating its first <Text style={styles.textHighlight}>Net Zero Carbon City.</Text>
             </Text>
 
             <View style={styles.progressRow}>
@@ -311,10 +395,15 @@ export default function DashboardScreen({
                   colors={['#dced72', '#5ec26a']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={styles.progressBarFill}
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.min(100, Math.max(0, missionPercent))}%` },
+                  ]}
                 />
               </View>
-              <Text style={styles.progressText}>14% · 2025</Text>
+              <Text style={styles.progressText}>
+                {missionPercent}% · {missionLabel}
+              </Text>
             </View>
             <Text style={styles.amritText}>AMRIT KAAL · NET ZERO BHARAT</Text>
 
@@ -696,62 +785,61 @@ export default function DashboardScreen({
         {/* TOP ECO CONTRIBUTORS */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Top Eco Contributors · Rau Vidhan Sabha</Text>
+            <Text style={styles.sectionTitle}>{leaderboardTitle}</Text>
             <Pressable>
               <Text style={styles.seeAllText}>See all ›</Text>
             </Pressable>
           </View>
 
           <View style={styles.leaderboardContainer}>
-            {/* Rank 1 */}
-            <View style={styles.leaderboardCard}>
-              <View style={[styles.rankCircle, { backgroundColor: '#f59e0b' }]}>
-                <Text style={styles.rankText}>#1</Text>
-              </View>
-              <View style={styles.leaderboardInfo}>
-                <Text style={styles.leaderboardName}>Aarav Patel</Text>
-                <Text style={styles.leaderboardVehicle}>Land Rover Defender</Text>
-              </View>
-              <View style={styles.leaderboardScore}>
-                <Text style={styles.leaderboardScoreTop}>41 🌳</Text>
-                <Text style={styles.leaderboardScoreBottom}>612kg CO₂</Text>
-              </View>
-            </View>
-
-            {/* Rank 2 */}
-            <View style={styles.leaderboardCard}>
-              <View style={[styles.rankCircle, { backgroundColor: '#9ca3af' }]}>
-                <Text style={styles.rankText}>#2</Text>
-              </View>
-              <View style={styles.leaderboardInfo}>
-                <Text style={styles.leaderboardName}>Neha Joshi</Text>
-                <Text style={styles.leaderboardVehicle}>Tata Nexon EV</Text>
-              </View>
-              <View style={styles.leaderboardScore}>
-                <Text style={styles.leaderboardScoreTop}>33 🌳</Text>
-                <Text style={styles.leaderboardScoreBottom}>488kg CO₂</Text>
-              </View>
-            </View>
-
-            {/* Rank 3 (Current User) */}
-            <View style={[styles.leaderboardCard, styles.leaderboardCardActive]}>
-              <View style={[styles.rankCircle, { backgroundColor: '#d97706' }]}>
-                <Text style={styles.rankText}>#3</Text>
-              </View>
-              <View style={styles.leaderboardInfo}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.leaderboardName}>Rahul Sharma</Text>
-                  <View style={styles.youBadge}>
-                    <Text style={styles.youBadgeText}>YOU</Text>
+            {topContributors.length === 0 ? (
+              <Text style={styles.seeAllText}>No rankings yet</Text>
+            ) : (
+              topContributors.map((entry, index) => {
+                const rankColors = ['#f59e0b', '#9ca3af', '#d97706'];
+                const isYou =
+                  entry.name &&
+                  displayName &&
+                  entry.name.toLowerCase() === displayName.toLowerCase();
+                return (
+                  <View
+                    key={`${entry.rank}-${entry.name}`}
+                    style={[
+                      styles.leaderboardCard,
+                      isYou && styles.leaderboardCardActive,
+                    ]}>
+                    <View
+                      style={[
+                        styles.rankCircle,
+                        { backgroundColor: rankColors[index] || '#059669' },
+                      ]}>
+                      <Text style={styles.rankText}>#{entry.rank}</Text>
+                    </View>
+                    <View style={styles.leaderboardInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.leaderboardName}>{entry.name}</Text>
+                        {isYou ? (
+                          <View style={styles.youBadge}>
+                            <Text style={styles.youBadgeText}>YOU</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.leaderboardVehicle}>
+                        {entry.badge || entry.vidhanSabha || 'Eco Contributor'}
+                      </Text>
+                    </View>
+                    <View style={styles.leaderboardScore}>
+                      <Text style={styles.leaderboardScoreTop}>
+                        {entry.trees} 🌳
+                      </Text>
+                      <Text style={styles.leaderboardScoreBottom}>
+                        {Math.round(entry.co2Kg || 0)}kg CO₂
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                <Text style={styles.leaderboardVehicle}>Land Rover Defender</Text>
-              </View>
-              <View style={styles.leaderboardScore}>
-                <Text style={styles.leaderboardScoreTop}>24 🌳</Text>
-                <Text style={styles.leaderboardScoreBottom}>312kg CO₂</Text>
-              </View>
-            </View>
+                );
+              })
+            )}
           </View>
         </View>
 
@@ -1046,7 +1134,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressBarFill: {
-    width: '14%',
     height: '100%',
     borderRadius: 4,
   },

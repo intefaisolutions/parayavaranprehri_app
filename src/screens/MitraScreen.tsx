@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, mitrasService, staticDataService } from '../api';
+import { ApiError, mitrasService, setMitraFlag } from '../api';
 
 type Props = {
   onBack: () => void;
+  onRegistered?: (mitraId: string) => void | Promise<void>;
 };
 
 type MembershipType = 'free' | 'premium';
@@ -33,7 +34,7 @@ type MitraFormData = {
 const generateMitraId = () =>
   `PM-IND-${Math.floor(100000 + Math.random() * 900000)}`;
 
-export default function MitraScreen({ onBack }: Props) {
+export default function MitraScreen({ onBack, onRegistered }: Props) {
   const [step, setStep] = useState<'form' | 'card'>('form');
   const [membership, setMembership] = useState<MembershipType>('premium');
   const [name, setName] = useState('');
@@ -48,11 +49,16 @@ export default function MitraScreen({ onBack }: Props) {
   const handleGenerate = async () => {
     if (submitting) return;
 
-    const formName = name.trim() || 'Rahul Sharma';
-    const formMobile = mobile.trim() || '9826012345';
-    const formEmail = email.trim() || 'rahul@email.com';
+    const formName = name.trim();
+    const formMobile = mobile.trim();
+    const formEmail = email.trim();
     const formProfession = profession.trim();
     const formAddress = address.trim();
+
+    if (!formName || !formMobile) {
+      setErrorMsg('Name and mobile are required.');
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg('');
@@ -60,12 +66,13 @@ export default function MitraScreen({ onBack }: Props) {
       const created = await mitrasService.selfRegister({
         name: formName,
         mobile: formMobile,
-        email: formEmail,
+        email: formEmail || undefined,
         profession: formProfession || undefined,
         address: formAddress || undefined,
         membership,
       });
 
+      const mitraId = created.mitraId || generateMitraId();
       setCardData({
         name: formName,
         profession: formProfession,
@@ -73,43 +80,32 @@ export default function MitraScreen({ onBack }: Props) {
         mobile: formMobile,
         email: formEmail,
         membership,
-        mitraId: created.mitraId || generateMitraId(),
+        mitraId,
       });
+      await setMitraFlag(true, mitraId);
       setStep('card');
     } catch (createError) {
-      // Citizen may lack mitras:create — try self-register failed then static card
-      try {
-        const card = await staticDataService.getMitraCard();
-        setCardData({
-          name: formName || card.name,
-          profession: formProfession || card.role,
-          address: formAddress,
-          mobile: formMobile,
-          email: formEmail,
-          membership,
-          mitraId: card.id || generateMitraId(),
-        });
-        setStep('card');
-        setErrorMsg(
-          createError instanceof ApiError
-            ? `${createError.message} Showing preview card.`
-            : 'Showing preview card.',
-        );
-      } catch {
-        setErrorMsg(
-          createError instanceof ApiError
-            ? createError.message
-            : 'Failed to register as Mitra',
-        );
-      }
+      setErrorMsg(
+        createError instanceof ApiError
+          ? createError.message
+          : 'Failed to register as Mitra',
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
+  const openMitraHome = async () => {
+    if (cardData?.mitraId && onRegistered) {
+      await onRegistered(cardData.mitraId);
+      return;
+    }
+    onBack();
+  };
+
   const handleBack = () => {
     if (step === 'card') {
-      setStep('form');
+      void openMitraHome();
       return;
     }
     onBack();
@@ -311,6 +307,12 @@ export default function MitraScreen({ onBack }: Props) {
                     </LinearGradient>
                   </Pressable>
                 </View>
+
+                <Pressable
+                  style={styles.homeBtn}
+                  onPress={() => void openMitraHome()}>
+                  <Text style={styles.homeBtnText}>Open Mitra Home →</Text>
+                </Pressable>
               </>
             )
           )}
@@ -578,5 +580,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  homeBtn: {
+    marginTop: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#126e35',
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+  },
+  homeBtnText: {
+    color: '#126e35',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });

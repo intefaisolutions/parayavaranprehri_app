@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { computeProfileStats, Vehicle } from '../data/vehiclesData';
@@ -21,12 +22,15 @@ import {
   getRefreshToken,
   getStoredPhone,
   getStoredUser,
+  geoService,
   notificationsService,
   saveSession,
   unwrapList,
+  uploadsService,
   usersService,
   type AuthUser,
 } from '../api';
+import { getCurrentCoords } from '../utils/deviceLocation';
 
 const { width } = Dimensions.get('window');
 
@@ -55,8 +59,8 @@ export default function ProfileScreen({
   onAdminPreview,
 }: ProfileScreenProps) {
   const stats = computeProfileStats(vehicles);
-  const [name, setName] = useState('Rahul Sharma');
-  const [phone, setPhone] = useState('+91 98260 12345');
+  const [name, setName] = useState('Citizen');
+  const [phone, setPhone] = useState('');
   const [location, setLocation] = useState('Indore, Madhya Pradesh');
   const [avatar, setAvatar] = useState<string | undefined>();
   const [notifCount, setNotifCount] = useState(0);
@@ -68,6 +72,9 @@ export default function ProfileScreen({
   const [district, setDistrict] = useState('');
   const [stateName, setStateName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [vidhanSabha, setVidhanSabha] = useState('');
 
   const applyUser = (user: Partial<AuthUser> & Record<string, unknown>) => {
     const fn = String(user.firstName || '');
@@ -122,6 +129,84 @@ export default function ProfileScreen({
       mounted = false;
     };
   }, []);
+
+  const detectLocation = async () => {
+    if (detectingLocation) return;
+    setDetectingLocation(true);
+    try {
+      const coords = await getCurrentCoords();
+      if (!coords) {
+        Alert.alert(
+          'Location unavailable',
+          'Allow location permission and try again.',
+        );
+        return;
+      }
+      const result = await geoService.reverse(
+        coords.latitude,
+        coords.longitude,
+      );
+      if (result.district) setDistrict(result.district);
+      if (result.state) setStateName(result.state);
+      if (result.vidhanSabha) setVidhanSabha(result.vidhanSabha);
+      const locParts = [
+        result.vidhanSabha,
+        result.district,
+        result.state,
+      ].filter(Boolean);
+      if (locParts.length) setLocation(locParts.join(', '));
+      Alert.alert(
+        'Location detected',
+        [
+          result.vidhanSabha ? `Vidhan Sabha: ${result.vidhanSabha}` : null,
+          result.district ? `District: ${result.district}` : null,
+          result.state ? `State: ${result.state}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n') || 'Location saved to form. Tap Save to update profile.',
+      );
+    } catch (error) {
+      Alert.alert(
+        'Detect failed',
+        error instanceof Error ? error.message : 'Could not reverse-geocode',
+      );
+    } finally {
+      setDetectingLocation(false);
+    }
+  };
+
+  const pickAvatar = async () => {
+    if (uploadingAvatar) return;
+    const result = await launchImageLibrary({
+      mediaType: 'photo',
+      quality: 0.8,
+      selectionLimit: 1,
+    });
+    if (result.didCancel || !result.assets?.[0]?.uri) return;
+    const asset = result.assets[0];
+    setUploadingAvatar(true);
+    try {
+      const uploaded = await uploadsService.upload(
+        {
+          uri: asset.uri!,
+          name: asset.fileName || `avatar-${Date.now()}.jpg`,
+          type: asset.type || 'image/jpeg',
+        },
+        'users',
+      );
+      if (uploaded?.url) {
+        setAvatarUrl(uploaded.url);
+        setAvatar(uploaded.url);
+      }
+    } catch (error) {
+      Alert.alert(
+        'Upload failed',
+        error instanceof Error ? error.message : 'Could not upload avatar',
+      );
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -351,9 +436,36 @@ export default function ProfileScreen({
               value={stateName}
               onChangeText={setStateName}
             />
+            {vidhanSabha ? (
+              <Text style={styles.vidhanHint}>Vidhan Sabha: {vidhanSabha}</Text>
+            ) : null}
+            <Pressable
+              style={styles.avatarPickBtn}
+              onPress={() => void detectLocation()}
+              disabled={detectingLocation}>
+              {detectingLocation ? (
+                <ActivityIndicator color="#126e35" />
+              ) : (
+                <Text style={styles.avatarPickText}>
+                  Detect Vidhan Sabha from GPS
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              style={styles.avatarPickBtn}
+              onPress={() => void pickAvatar()}
+              disabled={uploadingAvatar}>
+              {uploadingAvatar ? (
+                <ActivityIndicator color="#126e35" />
+              ) : (
+                <Text style={styles.avatarPickText}>
+                  {avatarUrl ? 'Change photo' : 'Pick photo from gallery'}
+                </Text>
+              )}
+            </Pressable>
             <TextInput
               style={styles.modalInput}
-              placeholder="Avatar image URL"
+              placeholder="Or paste avatar image URL"
               value={avatarUrl}
               onChangeText={setAvatarUrl}
               autoCapitalize="none"
@@ -442,6 +554,24 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#111827',
     backgroundColor: '#f9fafb',
+  },
+  avatarPickBtn: {
+    borderWidth: 1,
+    borderColor: '#86efac',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+  },
+  avatarPickText: {
+    color: '#126e35',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  vidhanHint: {
+    fontSize: 13,
+    color: '#166534',
+    fontWeight: '600',
   },
   modalActions: {
     flexDirection: 'row',

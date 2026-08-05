@@ -20,6 +20,20 @@ export const mitrasService = {
     }>('/mitras/self-register', { method: 'POST', body: payload });
   },
 
+  /** Own Mitra profile (matched by account phone). */
+  getMe() {
+    return apiRequest<{
+      _id: string;
+      mitraId: string;
+      name: string;
+      mobile: string;
+      status?: string;
+      profession?: string;
+      address?: string;
+      membership?: string;
+    }>('/mitras/me');
+  },
+
   list(params: { status?: string; search?: string } = {}) {
     return apiRequest(`/mitras${toQueryString(params)}`);
   },
