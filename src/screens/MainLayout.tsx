@@ -19,6 +19,7 @@ import OfferLandScreen from './OfferLandScreen';
 import AboutInitiativeScreen from './AboutInitiativeScreen';
 import AdminPreviewScreen from './AdminPreviewScreen';
 import VehicleDetailScreen from './VehicleDetailScreen';
+import NotificationsScreen from './NotificationsScreen';
 import BottomNav from '../components/BottomNav';
 import {
   AddedVehicle,
@@ -32,12 +33,18 @@ import {
   ApiError,
   authService,
   clearSession,
+  getMitraFlag,
   getRefreshToken,
   setMitraFlag,
   usersService,
   vehiclesService,
 } from '../api';
-import { mapApiVehicleToUi, mapInsuranceListToUi } from '../api/mappers';
+import {
+  canFetchVehicleTrees,
+  mapApiVehicleToUi,
+  mapInsuranceListToUi,
+  statsFromVehicleTrees,
+} from '../api/mappers';
 import { resolveIsMitra } from '../utils/resolveIsMitra';
 
 type Tab = 'home' | 'vehicles' | 'map' | 'ranks' | 'profile';
@@ -54,7 +61,8 @@ type OverlayScreen =
   | 'offerLand'
   | 'aboutInitiative'
   | 'adminPreview'
-  | 'vehicleDetail';
+  | 'vehicleDetail'
+  | 'notifications';
 
 export default function MainLayout() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -71,12 +79,18 @@ export default function MainLayout() {
 
   const refreshMitraStatus = useCallback(async () => {
     try {
-      const ok = await resolveIsMitra();
-      setIsMitra(ok);
+      const cached = await getMitraFlag();
+      setIsMitra(cached);
     } catch {
       setIsMitra(false);
     } finally {
       setMitraReady(true);
+    }
+    try {
+      const ok = await resolveIsMitra();
+      setIsMitra(ok);
+    } catch {
+      // keep cached flag
     }
   }, []);
 
@@ -88,29 +102,48 @@ export default function MainLayout() {
     setLoadingVehicles(true);
     setVehiclesError('');
     try {
-      // Prefer ShieldSure insurance vehicles; fall back to app-registered ones.
-      let insuranceVehicles: Vehicle[] = [];
-      try {
-        const insuranceRaw = await usersService.getMyVehicles();
-        insuranceVehicles = mapInsuranceListToUi(insuranceRaw);
-      } catch {
-        insuranceVehicles = [];
-      }
+      const [insuranceRaw, list] = await Promise.all([
+        usersService.getMyVehicles().catch(() => []),
+        vehiclesService.list().catch(() => []),
+      ]);
+      const insuranceVehicles = mapInsuranceListToUi(insuranceRaw);
+      const appVehicles = (Array.isArray(list) ? list : []).map(v =>
+        mapApiVehicleToUi(v),
+      );
 
-      let appVehicles: Vehicle[] = [];
-      try {
-        const list = await vehiclesService.list();
-        appVehicles = (Array.isArray(list) ? list : []).map(mapApiVehicleToUi);
-      } catch {
-        appVehicles = [];
-      }
-
+      // Prefer app-registered vehicles (real Mongo ids) over insurance stubs.
       const byPlate = new Map<string, Vehicle>();
       [...insuranceVehicles, ...appVehicles].forEach(v => {
         const key = (v.plate || v.id).toUpperCase();
-        if (!byPlate.has(key)) byPlate.set(key, v);
+        const existing = byPlate.get(key);
+        if (!existing || canFetchVehicleTrees(v.id)) {
+          byPlate.set(key, v);
+        }
       });
-      setVehicles(Array.from(byPlate.values()));
+      const merged = Array.from(byPlate.values());
+      setVehicles(merged);
+      setLoadingVehicles(false);
+
+      const withStats = await Promise.all(
+        merged.map(async vehicle => {
+          if (!canFetchVehicleTrees(vehicle.id)) {
+            return vehicle;
+          }
+          try {
+            const treesRes = await vehiclesService.getTrees(vehicle.id);
+            const stats = statsFromVehicleTrees(treesRes);
+            return {
+              ...vehicle,
+              trees: stats.trees,
+              co2: stats.co2,
+              survival: stats.survival,
+            };
+          } catch {
+            return vehicle;
+          }
+        }),
+      );
+      setVehicles(withStats);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -177,21 +210,18 @@ export default function MainLayout() {
   };
 
   const handleLogout = async () => {
-    try {
-      const refreshToken = await getRefreshToken();
-      if (refreshToken) {
-        await authService.logout(refreshToken);
-      }
-    } catch {
-      // Clear local session even if logout API fails
-    } finally {
-      await clearSession();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
+    const refreshToken = await getRefreshToken();
+    await clearSession();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
+    if (refreshToken) {
+      void authService.logout(refreshToken).catch(() => undefined);
     }
   };
+
+  const openNotifications = () => setOverlay('notifications');
 
   const renderScreen = () => {
     if (!mitraReady && activeTab === 'home') {
@@ -215,7 +245,12 @@ export default function MainLayout() {
     switch (activeTab) {
       case 'home':
         if (isMitra) {
-          return <MitraDashboardScreen onLogout={handleLogout} />;
+          return (
+            <MitraDashboardScreen
+              onLogout={handleLogout}
+              onNotifications={openNotifications}
+            />
+          );
         }
         return (
           <DashboardScreen
@@ -231,6 +266,7 @@ export default function MainLayout() {
             onOfferLand={() => setOverlay('offerLand')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
+            onNotifications={openNotifications}
           />
         );
       case 'vehicles':
@@ -239,12 +275,13 @@ export default function MainLayout() {
             vehicles={vehicles}
             onAddVehicle={openAddVehicle}
             onViewDetails={openVehicleDetail}
+            onNotifications={openNotifications}
           />
         );
       case 'map':
-        return <MapScreen />;
+        return <MapScreen onNotifications={openNotifications} />;
       case 'ranks':
-        return <RanksScreen />;
+        return <RanksScreen onNotifications={openNotifications} />;
       case 'profile':
         return (
           <ProfileScreen
@@ -254,6 +291,8 @@ export default function MainLayout() {
             onVehicleIdentity={() => setOverlay('identity')}
             onRashiVan={() => setOverlay('rashiVan')}
             onAdminPreview={() => setOverlay('adminPreview')}
+            onNotifications={openNotifications}
+            onCommunity={() => setActiveTab('ranks')}
           />
         );
       default:
@@ -271,6 +310,7 @@ export default function MainLayout() {
             onOfferLand={() => setOverlay('offerLand')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
+            onNotifications={openNotifications}
           />
         );
     }
@@ -283,23 +323,46 @@ export default function MainLayout() {
           <VehicleDetailScreen
             vehicle={selectedVehicle}
             onBack={closeOverlay}
+            onNotifications={openNotifications}
+            onDeleted={() => {
+              closeOverlay();
+              loadVehicles();
+            }}
           />
         ) : null;
       case 'adminPreview':
-        return <AdminPreviewScreen onBack={closeOverlay} />;
+        return (
+          <AdminPreviewScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
+      case 'notifications':
+        return <NotificationsScreen onBack={closeOverlay} />;
       case 'aboutInitiative':
         return (
           <AboutInitiativeScreen
             onBack={closeOverlay}
+            onNotifications={openNotifications}
             onViewJourney={() => setOverlay('journey')}
+            onMeetLeaders={() => {
+              closeOverlay();
+              setActiveTab('home');
+            }}
           />
         );
       case 'offerLand':
-        return <OfferLandScreen onBack={closeOverlay} />;
+        return (
+          <OfferLandScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       case 'mitra':
         return (
           <MitraScreen
             onBack={closeOverlay}
+            onNotifications={openNotifications}
             onRegistered={async mitraId => {
               await setMitraFlag(true, mitraId);
               setIsMitra(true);
@@ -309,25 +372,51 @@ export default function MainLayout() {
           />
         );
       case 'support':
-        return <SupportScreen onBack={closeOverlay} />;
+        return (
+          <SupportScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       case 'news':
-        return <NewsScreen onBack={closeOverlay} />;
+        return (
+          <NewsScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       case 'rashiVan':
-        return <RashiVanScreen onBack={closeOverlay} />;
+        return (
+          <RashiVanScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       case 'greenSelfie':
         return <GreenSelfieScreen onBack={closeOverlay} />;
       case 'identity':
-        return <PersonIdentityScreen onBack={closeOverlay} />;
+        return (
+          <PersonIdentityScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       case 'addVehicle':
         return (
           <AddVehicleScreen
             onBack={closeOverlay}
             onRegisterVehicle={registerVehicle}
             onComplete={handleAddVehicleComplete}
+            onNotifications={openNotifications}
           />
         );
       case 'journey':
-        return <JourneyAchievementsScreen onBack={closeOverlay} />;
+        return (
+          <JourneyAchievementsScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       default:
         return null;
     }

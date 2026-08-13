@@ -1,5 +1,12 @@
 import { Vehicle } from './vehiclesData';
 
+export type TreeMonthPoint = {
+  label: string;
+  /** 0–100 */
+  progress: number;
+  photoUrl?: string;
+};
+
 export type AssignedTree = {
   id: string;
   apiId?: string;
@@ -10,9 +17,11 @@ export type AssignedTree = {
   location: string;
   height: string;
   co2: string;
-  progress: number;
-  imageUrl: string;
-  months: string[];
+  /** 0–1 from analytics; null until loaded */
+  progress: number | null;
+  /** Real upload URL only — never a stock-photo fallback */
+  imageUrl?: string;
+  months: TreeMonthPoint[];
 };
 
 export type VehicleDetailInfo = {

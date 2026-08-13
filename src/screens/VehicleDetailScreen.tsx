@@ -1,66 +1,121 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon from '../components/AppIcon';
+import QrImage from '../components/QrImage';
 import {
   AssignedTree,
+  TreeMonthPoint,
 } from '../data/vehicleDetailData';
 import { Vehicle } from '../data/vehiclesData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { ApiError, getStoredUser, treesService, vehiclesService } from '../api';
+import { canFetchVehicleTrees } from '../api/mappers';
 
 type Props = {
   vehicle: Vehicle;
   onBack: () => void;
+  onNotifications?: () => void;
+  onDeleted?: () => void;
 };
+
+function isRealImageUrl(value?: string | null): value is string {
+  if (!value || typeof value !== 'string') return false;
+  const url = value.trim();
+  if (!url) return false;
+  if (/unsplash\.com/i.test(url)) return false;
+  return (
+    /^https?:\/\//i.test(url) ||
+    url.startsWith('file:') ||
+    url.startsWith('content:')
+  );
+}
+
+function TreeThumb({ uri }: { uri?: string }) {
+  if (isRealImageUrl(uri)) {
+    return <Image source={{ uri }} style={styles.treeThumb} />;
+  }
+  return (
+    <View style={[styles.treeThumb, styles.treeThumbPlaceholder]}>
+      <MaterialCommunityIcons name="tree-outline" size={22} color="#2b964f" />
+    </View>
+  );
+}
+
+function applyAnalytics(
+  prev: AssignedTree,
+  a: Awaited<ReturnType<typeof treesService.getAnalytics>>,
+): AssignedTree {
+  const series: TreeMonthPoint[] = Array.isArray(a.monthlySeries)
+    ? a.monthlySeries.map(point => ({
+        label: point.label,
+        progress: Number(point.progress) || 0,
+        photoUrl: isRealImageUrl(point.photoUrl) ? point.photoUrl : undefined,
+      }))
+    : [];
+
+  const photos = Array.isArray(a.monthlyPhotos)
+    ? a.monthlyPhotos.filter(isRealImageUrl)
+    : [];
+  const imageUrl =
+    (isRealImageUrl(a.image) ? a.image : undefined) ||
+    photos[0] ||
+    series.find(p => p.photoUrl)?.photoUrl ||
+    prev.imageUrl;
+
+  return {
+    ...prev,
+    name: a.species || prev.name,
+    status: a.status || prev.status,
+    height: a.height != null ? `${a.height} m` : prev.height,
+    co2:
+      typeof a.co2Kg === 'number'
+        ? `${Math.round(a.co2Kg)}kg CO₂`
+        : prev.co2,
+    progress: typeof a.progress === 'number' ? a.progress / 100 : prev.progress,
+    location: a.vidhanSabha || prev.location,
+    imageUrl,
+    months: series,
+  };
+}
 
 function TreeItem({ tree }: { tree: AssignedTree }) {
   const [expanded, setExpanded] = useState(false);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState('');
   const [live, setLive] = useState<AssignedTree>(tree);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setLive(tree);
+    setLoaded(false);
+    setAnalyticsError('');
   }, [tree]);
 
   const loadAnalytics = async () => {
     const id = tree.apiId || tree.id;
     if (!id || loadingAnalytics) return;
     setLoadingAnalytics(true);
+    setAnalyticsError('');
     try {
       const a = await treesService.getAnalytics(id);
-      const photos = Array.isArray(a.monthlyPhotos) ? a.monthlyPhotos : [];
-      setLive(prev => ({
-        ...prev,
-        name: a.species || prev.name,
-        status: a.status || prev.status,
-        height:
-          a.height != null ? `${a.height} m` : prev.height,
-        co2:
-          typeof a.co2Kg === 'number' ? `${Math.round(a.co2Kg)}kg CO₂` : prev.co2,
-        progress:
-          typeof a.progress === 'number' ? a.progress / 100 : prev.progress,
-        location: a.vidhanSabha || prev.location,
-        imageUrl: photos[0] || prev.imageUrl,
-        months:
-          photos.length > 0
-            ? photos.map((_, i) => `M${i + 1}`)
-            : prev.months,
-      }));
+      setLive(prev => applyAnalytics(prev, a));
+      setLoaded(true);
     } catch (error) {
-      Alert.alert(
-        'Analytics',
+      setAnalyticsError(
         error instanceof ApiError
           ? error.message
           : 'Could not load tree analytics',
@@ -70,6 +125,15 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
     }
   };
 
+  useEffect(() => {
+    if (expanded && !loaded && !loadingAnalytics) {
+      void loadAnalytics();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
+  const photoMonths = live.months.filter(m => isRealImageUrl(m.photoUrl));
+
   return (
     <View style={styles.treeItem}>
       <View style={styles.timelineDot} />
@@ -77,7 +141,7 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
         <Pressable
           style={styles.treeHeader}
           onPress={() => setExpanded(prev => !prev)}>
-          <Image source={{ uri: live.imageUrl }} style={styles.treeThumb} />
+          <TreeThumb uri={live.imageUrl} />
           <View style={styles.treeHeaderInfo}>
             <Text style={styles.treeName}>{live.name}</Text>
             <Text style={styles.treeMeta}>
@@ -90,33 +154,115 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
           <Text style={styles.treeChevron}>{expanded ? '▲' : '▼'}</Text>
         </Pressable>
 
-        {expanded && (
+        {expanded ? (
           <View style={styles.treeExpanded}>
             <Text style={styles.treeLocation}>
               {live.location} · {live.height} · {live.co2}
             </Text>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.min(100, Math.max(0, live.progress * 100))}%` },
-                ]}
-              />
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.monthsRow}>
-              {live.months.map(month => (
-                <View key={month} style={styles.monthCard}>
-                  <Image
-                    source={{ uri: live.imageUrl }}
-                    style={styles.monthImage}
-                  />
-                  <Text style={styles.monthLabel}>{month}</Text>
+
+            {loadingAnalytics && !loaded ? (
+              <View style={styles.analyticsLoading}>
+                <ActivityIndicator color="#126e35" />
+                <Text style={styles.analyticsLoadingText}>
+                  Loading analytics…
+                </Text>
+              </View>
+            ) : null}
+
+            {analyticsError ? (
+              <Text style={styles.analyticsError}>{analyticsError}</Text>
+            ) : null}
+
+            {live.progress != null ? (
+              <>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressLabel}>Tree progress</Text>
+                  <Text style={styles.progressPct}>
+                    {Math.round(live.progress * 100)}%
+                  </Text>
                 </View>
-              ))}
-            </ScrollView>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.min(
+                          100,
+                          Math.max(0, live.progress * 100),
+                        )}%`,
+                      },
+                    ]}
+                  />
+                </View>
+              </>
+            ) : !loadingAnalytics ? (
+              <Text style={styles.emptyAnalytics}>
+                Progress unavailable until analytics loads.
+              </Text>
+            ) : null}
+
+            {live.months.length > 0 ? (
+              <>
+                <Text style={styles.monthsTitle}>Monthly progress</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.monthsRow}>
+                  {live.months.map((month, index) => (
+                    <View
+                      key={`${month.label}-${index}`}
+                      style={styles.monthCard}>
+                      <View style={styles.monthBarTrack}>
+                        <View
+                          style={[
+                            styles.monthBarFill,
+                            {
+                              height: `${Math.min(
+                                100,
+                                Math.max(4, month.progress),
+                              )}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.monthLabel}>{month.label}</Text>
+                      <Text style={styles.monthPct}>{month.progress}%</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : loaded ? (
+              <Text style={styles.emptyAnalytics}>
+                No monthly series for this tree yet.
+              </Text>
+            ) : null}
+
+            {photoMonths.length > 0 ? (
+              <>
+                <Text style={styles.monthsTitle}>Tree photos</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.monthsRow}>
+                  {photoMonths.map((month, index) => (
+                    <View
+                      key={`photo-${month.label}-${index}`}
+                      style={styles.photoCard}>
+                      <Image
+                        source={{ uri: month.photoUrl }}
+                        style={styles.monthImage}
+                      />
+                      <Text style={styles.monthLabel}>{month.label}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : loaded ? (
+              <Text style={styles.emptyAnalytics}>
+                No uploaded tree photo yet.
+              </Text>
+            ) : null}
+
             <Pressable
               style={styles.analyticsBtn}
               onPress={() => void loadAnalytics()}
@@ -125,23 +271,42 @@ function TreeItem({ tree }: { tree: AssignedTree }) {
                 <ActivityIndicator color="#126e35" />
               ) : (
                 <Text style={styles.analyticsBtnText}>
-                  Open full tree analytics →
+                  Refresh tree analytics →
                 </Text>
               )}
             </Pressable>
           </View>
-        )}
+        ) : null}
       </View>
     </View>
   );
 }
 
-export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
+export default function VehicleDetailScreen({
+  vehicle,
+  onBack,
+  onNotifications,
+  onDeleted,
+}: Props) {
   const [detailVehicle, setDetailVehicle] = useState(vehicle);
   const [ownerName, setOwnerName] = useState('—');
   const [insuranceLabel, setInsuranceLabel] = useState('—');
   const [rtoLabel, setRtoLabel] = useState('—');
   const [assignedTrees, setAssignedTrees] = useState<AssignedTree[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState(vehicle.name);
+  const [editFuel, setEditFuel] = useState(vehicle.fuel);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const isEditable = canFetchVehicleTrees(vehicle.id);
+
+  const qrPayload = useMemo(() => {
+    const vhId = detailVehicle.vhId || vehicle.vhId || '';
+    const plate = detailVehicle.plate || vehicle.plate || '';
+    return `PPVH:${vhId}|${plate}`;
+  }, [detailVehicle.vhId, detailVehicle.plate, vehicle.vhId, vehicle.plate]);
+
   const detailGrid = [
     { icon: 'account-outline' as const, label: 'Owner', value: ownerName },
     {
@@ -168,6 +333,11 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
   ];
 
   useEffect(() => {
+    setEditName(vehicle.name);
+    setEditFuel(vehicle.fuel);
+  }, [vehicle]);
+
+  useEffect(() => {
     let mounted = true;
     (async () => {
       try {
@@ -191,6 +361,8 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
             fuel: apiVehicle.fuel || prev.fuel,
             vhId: apiVehicle.vhId || prev.vhId,
           }));
+          setEditName(apiVehicle.name || vehicle.name);
+          setEditFuel(apiVehicle.fuel || vehicle.fuel);
           const anyV = apiVehicle as Record<string, unknown>;
           if (anyV.insurance || anyV.insuranceId) {
             setInsuranceLabel(
@@ -232,13 +404,13 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
                 typeof t.co2Kg === 'number'
                   ? `${Math.round(t.co2Kg)}kg CO₂`
                   : '—',
-              progress: 0.5,
-              imageUrl:
-                t.image ||
-                'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=200',
-              months: ['M1', 'M2', 'M3', 'M4'],
+              progress: null,
+              imageUrl: isRealImageUrl(t.image) ? t.image : undefined,
+              months: [],
             })),
           );
+        } else if (mounted) {
+          setAssignedTrees([]);
         }
       } catch {
         if (mounted) setAssignedTrees([]);
@@ -249,6 +421,64 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
     };
   }, [vehicle]);
 
+  const handleSaveEdit = async () => {
+    if (!isEditable || saving) return;
+    setSaving(true);
+    try {
+      const updated = await vehiclesService.update(vehicle.id, {
+        name: editName.trim() || detailVehicle.name,
+        fuel: editFuel.trim() || detailVehicle.fuel,
+      });
+      setDetailVehicle(prev => ({
+        ...prev,
+        name: updated.name || editName,
+        fuel: updated.fuel || editFuel,
+      }));
+      setEditOpen(false);
+    } catch (error) {
+      Alert.alert(
+        'Update failed',
+        error instanceof ApiError ? error.message : 'Could not update vehicle',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!isEditable || deleting) return;
+    Alert.alert(
+      'Delete vehicle',
+      'Remove this vehicle from your account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setDeleting(true);
+              try {
+                await vehiclesService.remove(vehicle.id);
+                if (onDeleted) onDeleted();
+                else onBack();
+              } catch (error) {
+                Alert.alert(
+                  'Delete failed',
+                  error instanceof ApiError
+                    ? error.message
+                    : 'Could not delete vehicle',
+                );
+              } finally {
+                setDeleting(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(10) }]}>
@@ -257,11 +487,11 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
         </Pressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {vehicle.name}
+            {detailVehicle.name}
           </Text>
-          <Text style={styles.headerSubtitle}>{vehicle.plate}</Text>
+          <Text style={styles.headerSubtitle}>{detailVehicle.plate}</Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <AppIcon name="bell-outline" size={20} color="#0a3617" />
         </Pressable>
       </View>
@@ -292,7 +522,7 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
               </Text>
             </View>
             <View style={styles.qrBox}>
-              <MaterialCommunityIcons name="qrcode" size={28} color="#fff" />
+              <QrImage data={qrPayload} size={44} style={styles.qrImage} />
             </View>
           </View>
 
@@ -311,6 +541,28 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
             </View>
           </View>
         </LinearGradient>
+
+        {isEditable ? (
+          <View style={styles.actionRow}>
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => setEditOpen(true)}>
+              <Text style={styles.actionBtnText}>Edit</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.actionBtn, styles.actionBtnDanger]}
+              onPress={handleDelete}
+              disabled={deleting}>
+              {deleting ? (
+                <ActivityIndicator color="#be123c" />
+              ) : (
+                <Text style={[styles.actionBtnText, styles.actionBtnDangerText]}>
+                  Delete
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Vehicle Details</Text>
         <View style={styles.detailGrid}>
@@ -349,6 +601,57 @@ export default function VehicleDetailScreen({ vehicle, onBack }: Props) {
           )}
         </View>
       </ScrollView>
+
+      <Modal visible={editOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit vehicle</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Vehicle name"
+              value={editName}
+              onChangeText={setEditName}
+            />
+            <View style={styles.fuelRow}>
+              {['Petrol', 'Diesel', 'CNG', 'Electric'].map(f => (
+                <Pressable
+                  key={f}
+                  style={[
+                    styles.fuelChip,
+                    editFuel === f && styles.fuelChipActive,
+                  ]}
+                  onPress={() => setEditFuel(f)}>
+                  <Text
+                    style={[
+                      styles.fuelChipText,
+                      editFuel === f && styles.fuelChipTextActive,
+                    ]}>
+                    {f}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancel}
+                onPress={() => setEditOpen(false)}
+                disabled={saving}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalSave}
+                onPress={() => void handleSaveEdit()}
+                disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Save</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -438,12 +741,123 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
   },
   qrBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  qrImage: {
+    borderRadius: 8,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  actionBtn: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  actionBtnText: {
+    color: '#0a3617',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  actionBtnDanger: {
+    borderColor: '#fecdd3',
+    backgroundColor: '#fff1f2',
+  },
+  actionBtnDangerText: {
+    color: '#be123c',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: getBottomInset(24),
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0a3617',
+    marginBottom: 4,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
+  },
+  fuelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  fuelChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  fuelChipActive: {
+    backgroundColor: '#e8f7ee',
+    borderColor: '#136e35',
+  },
+  fuelChipText: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  fuelChipTextActive: {
+    color: '#136e35',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  modalCancel: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  modalSave: {
+    flex: 1,
+    backgroundColor: '#126e35',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalSaveText: {
+    color: '#fff',
+    fontWeight: '700',
   },
   summaryStats: {
     flexDirection: 'row',
@@ -575,6 +989,11 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     marginRight: 12,
   },
+  treeThumbPlaceholder: {
+    backgroundColor: '#e8f5e9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   treeHeaderInfo: {
     flex: 1,
   },
@@ -616,6 +1035,41 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 10,
   },
+  analyticsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  analyticsLoadingText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  analyticsError: {
+    fontSize: 12,
+    color: '#d32f2f',
+    marginBottom: 10,
+  },
+  emptyAnalytics: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginBottom: 12,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  progressLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0a3617',
+  },
+  progressPct: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2b964f',
+  },
   progressTrack: {
     height: 6,
     backgroundColor: '#eef2ef',
@@ -628,13 +1082,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#2b964f',
     borderRadius: 3,
   },
+  monthsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0a3617',
+    marginBottom: 8,
+  },
   monthsRow: {
     gap: 10,
     paddingBottom: 14,
   },
   monthCard: {
+    width: 56,
+    alignItems: 'center',
+  },
+  photoCard: {
     width: 72,
     alignItems: 'center',
+  },
+  monthBarTrack: {
+    width: 28,
+    height: 72,
+    backgroundColor: '#f0faf4',
+    borderRadius: 8,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  monthBarFill: {
+    width: '100%',
+    backgroundColor: '#2b964f',
+    borderRadius: 8,
   },
   monthImage: {
     width: 72,
@@ -643,9 +1121,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   monthLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#6b7280',
+    textAlign: 'center',
+  },
+  monthPct: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2b964f',
+    marginTop: 2,
   },
   analyticsBtn: {
     backgroundColor: '#ecfdf5',

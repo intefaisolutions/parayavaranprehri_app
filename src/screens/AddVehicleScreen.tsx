@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -14,14 +15,19 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
-import { AddedVehicle, generateVehicleId } from '../data/vehiclesData';
+import { AddedVehicle } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
+  API_BASE_URL,
   getStoredPhone,
   getStoredUser,
+  partnersService,
   personsService,
+  settingsService,
+  unwrapList,
   vehiclesService,
+  type Partner,
 } from '../api';
 import { mapApiVehicleToUi } from '../api/mappers';
 
@@ -29,33 +35,34 @@ type Props = {
   onBack: () => void;
   onRegisterVehicle: (vehicle: AddedVehicle) => void;
   onComplete: () => void;
+  onNotifications?: () => void;
+};
+
+type InsuranceOption = {
+  id: string;
+  name: string;
+  policy: string;
 };
 
 const TOTAL_STEPS = 5;
 const GRADIENT = ['#0c4820', '#2b964f'];
 
-const INSURANCE_OPTIONS = [
-  {
-    id: 'shieldsure',
-    name: 'ShieldSure General',
-    policy: 'Linked via insurance check',
-  },
-  {
-    id: 'icici',
-    name: 'ICICI Lombard',
-    policy: 'Linked via insurance check',
-  },
-  {
-    id: 'other',
-    name: 'Other / Not listed',
-    policy: 'Will be verified by officer',
-  },
-];
+const OTHER_OPTION: InsuranceOption = {
+  id: 'other',
+  name: 'Other / Not listed',
+  policy: 'Will be verified by officer',
+};
+
+function partnerLooksLikeInsurer(p: Partner) {
+  const name = `${p.partnerName || ''} ${p.partnerType || ''}`.toLowerCase();
+  return name.includes('insurance') || name.includes('insurer');
+}
 
 export default function AddVehicleScreen({
   onBack,
   onRegisterVehicle,
   onComplete,
+  onNotifications,
 }: Props) {
   const [step, setStep] = useState(1);
   const [vehicleNumber, setVehicleNumber] = useState('');
@@ -63,14 +70,24 @@ export default function AddVehicleScreen({
   const [fuelType, setFuelType] = useState('Petrol');
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState('');
-  const [selectedInsurance, setSelectedInsurance] = useState('shieldsure');
+  const [selectedInsurance, setSelectedInsurance] = useState('other');
+  const [insuranceOptions, setInsuranceOptions] = useState<InsuranceOption[]>([
+    OTHER_OPTION,
+  ]);
+  const [insuranceFreeText, setInsuranceFreeText] = useState(false);
+  const [otherInsurerName, setOtherInsurerName] = useState('');
+  const [loadingInsurers, setLoadingInsurers] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState('');
   const [ownerName, setOwnerName] = useState('Citizen');
   const [personId, setPersonId] = useState('—');
   const [phoneHint, setPhoneHint] = useState('');
   const [registeredVhId, setRegisteredVhId] = useState('');
+  const [registeredVehicleId, setRegisteredVehicleId] = useState('');
   const [treeCount, setTreeCount] = useState(0);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [certBusy, setCertBusy] = useState(false);
   const otpRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -112,12 +129,76 @@ export default function AddVehicleScreen({
     };
   }, []);
 
-  const insuranceName = useMemo(
-    () =>
-      INSURANCE_OPTIONS.find(o => o.id === selectedInsurance)?.name ||
-      'Insurance',
-    [selectedInsurance],
-  );
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoadingInsurers(true);
+      try {
+        // PartnerType has no Insurance/Insurer — load Active partners and filter.
+        const res = await partnersService.list({
+          page: 1,
+          limit: 100,
+          status: 'Active',
+        });
+        if (!mounted) return;
+        const partners = unwrapList(res).filter(partnerLooksLikeInsurer);
+        let options: InsuranceOption[] = partners.map(p => ({
+          id: p._id,
+          name: p.partnerName,
+          policy: p.location || 'Partner insurer',
+        }));
+
+        if (options.length === 0) {
+          try {
+            const settingsRes = await settingsService.list({
+              page: 1,
+              limit: 50,
+            });
+            const settings = unwrapList(settingsRes as any) as Array<
+              Record<string, unknown>
+            >;
+            options = settings
+              .filter(s => {
+                const blob = `${s.key || ''} ${s.name || ''} ${s.category || ''} ${s.value || ''}`.toLowerCase();
+                return blob.includes('insurance') || blob.includes('insurer');
+              })
+              .map((s, index) => ({
+                id: String(s._id || s.key || `setting-${index}`),
+                name: String(s.name || s.key || s.value || 'Insurer'),
+                policy: 'From settings',
+              }));
+          } catch {
+            // keep empty → Other only
+          }
+        }
+
+        options = [...options, OTHER_OPTION];
+        setInsuranceOptions(options);
+        setInsuranceFreeText(false);
+        setSelectedInsurance(options[0]?.id || 'other');
+      } catch {
+        if (!mounted) return;
+        setInsuranceOptions([OTHER_OPTION]);
+        setInsuranceFreeText(true);
+        setSelectedInsurance('other');
+      } finally {
+        if (mounted) setLoadingInsurers(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const insuranceName = useMemo(() => {
+    if (selectedInsurance === 'other') {
+      return otherInsurerName.trim() || OTHER_OPTION.name;
+    }
+    return (
+      insuranceOptions.find(o => o.id === selectedInsurance)?.name ||
+      'Insurance'
+    );
+  }, [selectedInsurance, insuranceOptions, otherInsurerName]);
 
   const plateDisplay = vehicleNumber.trim().toUpperCase() || '—';
   const todayLabel = useMemo(
@@ -168,37 +249,58 @@ export default function AddVehicleScreen({
     setStep(prev => prev - 1);
   };
 
-  const handleFetchVerify = () => {
+  const handleFetchVerify = async () => {
     const plate = vehicleNumber.trim();
     if (plate.length < 6) {
       Alert.alert('Invalid plate', 'Enter a valid vehicle number (min 6 characters).');
       return;
     }
-    setVehicleNumber(plate.toUpperCase());
+    const normalized = plate.toUpperCase();
+    setVehicleNumber(normalized);
     if (!vehicleName || vehicleName === 'My Vehicle') {
-      setVehicleName(plate.toUpperCase());
+      setVehicleName(normalized);
     }
-    setStep(2);
+    setOtp('');
+    setOtpError('');
+    setOtpSending(true);
+    try {
+      const res = await vehiclesService.requestOtp(normalized);
+      if (res.maskedMobile) {
+        setPhoneHint(res.maskedMobile);
+      }
+      setStep(2);
+    } catch (error) {
+      Alert.alert(
+        'OTP failed',
+        error instanceof ApiError
+          ? error.message
+          : 'Could not send OTP. Please try again.',
+      );
+    } finally {
+      setOtpSending(false);
+    }
   };
 
   const handleVerifyOtp = async () => {
     setOtpError('');
     if (otp.length !== 4) {
-      setOtpError('Enter the 4-digit OTP sent to your RC mobile.');
+      setOtpError('Enter the 4-digit OTP sent to your registered mobile.');
       return;
     }
-    const phone = await getStoredPhone();
-    const last4 = (phone || '').replace(/\D/g, '').slice(-4);
-    // Accept login phone last-4 OR static test OTP 1234 (matches backend STATIC_OTP)
-    if (otp === '1234' || (last4 && otp === last4)) {
+    const plate = vehicleNumber.trim().toUpperCase();
+    setOtpVerifying(true);
+    try {
+      await vehiclesService.verifyOtp(plate, otp);
       goNext();
-      return;
+    } catch (error) {
+      setOtpError(
+        error instanceof ApiError
+          ? error.message
+          : 'Invalid or expired OTP. Please try again.',
+      );
+    } finally {
+      setOtpVerifying(false);
     }
-    setOtpError(
-      last4
-        ? `Invalid OTP. Use last 4 digits of your mobile (••••${last4}) or test code 1234.`
-        : 'Invalid OTP. Use test code 1234.',
-    );
   };
 
   const handleRegisterVehicle = async () => {
@@ -210,11 +312,9 @@ export default function AddVehicleScreen({
       return;
     }
 
-    const vhId = generateVehicleId();
     const payload = {
       plate,
       name: vehicleName.trim() || plate,
-      vhId,
       fuel: fuelType,
       insuranceId: selectedInsurance,
     };
@@ -224,7 +324,8 @@ export default function AddVehicleScreen({
     try {
       const created = await vehiclesService.create(payload);
       const mapped = mapApiVehicleToUi(created);
-      setRegisteredVhId(mapped.vhId || vhId);
+      setRegisteredVhId(mapped.vhId);
+      setRegisteredVehicleId(mapped.id);
       onRegisterVehicle({
         id: mapped.id,
         plate: mapped.plate,
@@ -244,24 +345,59 @@ export default function AddVehicleScreen({
     }
   };
 
-  const handleShareCert = async () => {
+  const openCertificateShare = async (mode: 'share' | 'download') => {
+    if (!registeredVehicleId) {
+      Alert.alert(
+        'Certificate',
+        'Vehicle is not registered yet. Complete registration first.',
+      );
+      return;
+    }
+    if (certBusy) return;
+    setCertBusy(true);
     try {
-      await Share.share({ message: certMessage, title: 'Vehicle Certificate' });
-    } catch {
-      Alert.alert('Share failed', 'Could not open share sheet.');
+      const cert = await vehiclesService.getCertificate(registeredVehicleId);
+      const downloadUrl = `${API_BASE_URL}${cert.downloadPath}`;
+      if (mode === 'download') {
+        const canOpen = await Linking.canOpenURL(downloadUrl);
+        if (canOpen) {
+          await Linking.openURL(downloadUrl);
+          return;
+        }
+      }
+      await Share.share({
+        title: cert.fileName,
+        message:
+          mode === 'download'
+            ? `${cert.text}\n\nPDF: ${downloadUrl}`
+            : `${cert.text}\n\nPDF download: ${downloadUrl}`,
+        url: Platform.OS === 'ios' ? downloadUrl : undefined,
+      });
+    } catch (error) {
+      try {
+        await Share.share({
+          message: certMessage,
+          title: 'Vehicle Certificate',
+        });
+      } catch {
+        Alert.alert(
+          'Certificate failed',
+          error instanceof ApiError
+            ? error.message
+            : 'Could not generate certificate PDF.',
+        );
+      }
+    } finally {
+      setCertBusy(false);
     }
   };
 
+  const handleShareCert = async () => {
+    await openCertificateShare('share');
+  };
+
   const handleDownloadCert = async () => {
-    // No PDF backend yet — share sheet doubles as save/export on device
-    try {
-      await Share.share({
-        message: certMessage,
-        title: 'Save Vehicle Certificate',
-      });
-    } catch {
-      Alert.alert('Download', 'Certificate text is ready — use Share to save.');
-    }
+    await openCertificateShare('download');
   };
 
   const renderStepContent = () => {
@@ -307,7 +443,11 @@ export default function AddVehicleScreen({
                 </Pressable>
               ))}
             </View>
-            <GradientButton label="Fetch & verify" onPress={handleFetchVerify} />
+            <GradientButton
+              label={otpSending ? 'Sending OTP…' : 'Fetch & verify'}
+              onPress={() => void handleFetchVerify()}
+              disabled={otpSending}
+            />
           </>
         );
 
@@ -317,8 +457,8 @@ export default function AddVehicleScreen({
             <Text style={styles.cardTitle}>Confirm with OTP</Text>
             <Text style={styles.cardSubtitle}>
               {phoneHint
-                ? `Enter last 4 digits of ${phoneHint} (or test OTP 1234)`
-                : 'Enter test OTP 1234'}
+                ? `OTP sent to ${phoneHint}. Enter the 4-digit code.`
+                : 'Enter the 4-digit OTP sent to your registered mobile.'}
             </Text>
             <Pressable style={styles.otpRow} onPress={() => otpRef.current?.focus()}>
               {[0, 1, 2, 3].map(index => (
@@ -347,9 +487,9 @@ export default function AddVehicleScreen({
             </Pressable>
             {otpError ? <Text style={styles.registerError}>{otpError}</Text> : null}
             <GradientButton
-              label="Verify"
+              label={otpVerifying ? 'Verifying…' : 'Verify'}
               onPress={() => void handleVerifyOtp()}
-              disabled={otp.length !== 4}
+              disabled={otp.length !== 4 || otpVerifying}
             />
           </>
         );
@@ -359,26 +499,42 @@ export default function AddVehicleScreen({
           <>
             <Text style={styles.cardTitle}>Map insurance</Text>
             <Text style={styles.cardSubtitle}>
-              Select your insurer (linked via ShieldSure check when available).
+              Select your insurer from partners, or choose Other.
             </Text>
-            {INSURANCE_OPTIONS.map(option => {
-              const selected = selectedInsurance === option.id;
-              return (
-                <Pressable
-                  key={option.id}
-                  style={[styles.insuranceRow, selected && styles.insuranceRowActive]}
-                  onPress={() => setSelectedInsurance(option.id)}>
-                  <View style={[styles.radio, selected && styles.radioActive]}>
-                    {selected ? <View style={styles.radioInner} /> : null}
-                  </View>
-                  <View style={styles.insuranceInfo}>
-                    <Text style={styles.insuranceName}>{option.name}</Text>
-                    <Text style={styles.insurancePolicy}>{option.policy}</Text>
-                  </View>
-                  <Text style={styles.shieldIcon}>🛡️</Text>
-                </Pressable>
-              );
-            })}
+            {loadingInsurers ? (
+              <ActivityIndicator color="#136e35" style={{ marginVertical: 16 }} />
+            ) : (
+              insuranceOptions.map(option => {
+                const selected = selectedInsurance === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[
+                      styles.insuranceRow,
+                      selected && styles.insuranceRowActive,
+                    ]}
+                    onPress={() => setSelectedInsurance(option.id)}>
+                    <View style={[styles.radio, selected && styles.radioActive]}>
+                      {selected ? <View style={styles.radioInner} /> : null}
+                    </View>
+                    <View style={styles.insuranceInfo}>
+                      <Text style={styles.insuranceName}>{option.name}</Text>
+                      <Text style={styles.insurancePolicy}>{option.policy}</Text>
+                    </View>
+                    <Text style={styles.shieldIcon}>🛡️</Text>
+                  </Pressable>
+                );
+              })
+            )}
+            {(insuranceFreeText || selectedInsurance === 'other') && (
+              <TextInput
+                style={[styles.vehicleInput, { marginTop: 8 }]}
+                value={otherInsurerName}
+                onChangeText={setOtherInsurerName}
+                placeholder="Insurer name (optional)"
+                placeholderTextColor="#9ca3af"
+              />
+            )}
             <GradientButton label="Continue" onPress={goNext} />
           </>
         );
@@ -509,7 +665,7 @@ export default function AddVehicleScreen({
           <Text style={styles.headerTitle}>Add New Vehicle</Text>
           <Text style={styles.headerSubtitle}>Owner-verified onboarding</Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>

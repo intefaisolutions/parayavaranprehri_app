@@ -19,12 +19,14 @@ type Props = {
   vehicles: Vehicle[];
   onAddVehicle: () => void;
   onViewDetails: (vehicle: Vehicle) => void;
+  onNotifications?: () => void;
 };
 
 export default function VehiclesScreen({
   vehicles,
   onAddVehicle,
   onViewDetails,
+  onNotifications,
 }: Props) {
   const activeCount = vehicles.filter(v => v.status === 'Active').length;
   const insets = useSafeAreaInsets();
@@ -38,7 +40,7 @@ export default function VehiclesScreen({
             {activeCount} active · Net Zero contributors
           </Text>
         </View>
-        <Pressable style={styles.bellButton}>
+        <Pressable style={styles.bellButton} onPress={onNotifications}>
           <AppIcon name="bell-outline" size={20} color="#0a3617" />
         </Pressable>
       </View>

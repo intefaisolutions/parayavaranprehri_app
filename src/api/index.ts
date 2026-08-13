@@ -21,9 +21,10 @@ export { usersService } from './services/users.service';
 export { rolesService, permissionsService } from './services/roles.service';
 export { vehiclesService } from './services/vehicles.service';
 export { greenSelfiesService } from './services/greenSelfies.service';
+export type { GreenSelfieItem } from './services/greenSelfies.service';
 export { landOffersService } from './services/landOffers.service';
+export type { LandOfferItem } from './services/landOffers.service';
 export { staticDataService } from './services/staticData.service';
-export { gamificationService } from './services/gamification.service';
 export { treesService } from './services/trees.service';
 export { mitrasService } from './services/mitras.service';
 export { certificatesService } from './services/certificates.service';
@@ -34,6 +35,11 @@ export { newsService } from './services/news.service';
 export type { NewsItemApi } from './services/news.service';
 export { rashiTreesService } from './services/rashiTrees.service';
 export type { PublicRashiTree } from './services/rashiTrees.service';
+export { rashiPlantRequestsService } from './services/rashiPlantRequests.service';
+export type {
+  CreateRashiPlantRequestPayload,
+  RashiPlantRequestApi,
+} from './services/rashiPlantRequests.service';
 export {
   personsService,
   personIdentityService,
@@ -63,7 +69,7 @@ export type {
 } from './services/vehicles.service';
 export { leadersService, partnersService } from './services/leaders.service';
 export type { Leader, Partner } from './services/leaders.service';
-export { uploadsService, mediaService } from './services/uploads.service';
+export { uploadsService } from './services/uploads.service';
 export { journeyService } from './services/journey.service';
 export type {
   JourneyTimeline,
@@ -84,7 +90,6 @@ export type {
 } from './services/maintenanceLogs.service';
 export {
   mapsService,
-  locationsService,
   notificationsService,
   reportsService,
   settingsService,

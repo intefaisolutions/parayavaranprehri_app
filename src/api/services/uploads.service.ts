@@ -18,23 +18,7 @@ export const uploadsService = {
   signed(params: { url?: string; key?: string }) {
     return apiRequest<{ signedUrl: string }>(
       `/uploads/signed${toQueryString(params)}`,
+      { auth: false },
     );
-  },
-};
-
-export const mediaService = {
-  list(
-    params: {
-      page?: number;
-      limit?: number;
-      mediaType?: string;
-      usedInModule?: string;
-    } = {},
-  ) {
-    return apiRequest(`/media${toQueryString(params)}`);
-  },
-
-  getById(id: string) {
-    return apiRequest(`/media/${id}`);
   },
 };

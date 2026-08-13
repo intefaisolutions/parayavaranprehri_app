@@ -17,6 +17,7 @@ import { ApiError, mitrasService, setMitraFlag } from '../api';
 type Props = {
   onBack: () => void;
   onRegistered?: (mitraId: string) => void | Promise<void>;
+  onNotifications?: () => void;
 };
 
 type MembershipType = 'free' | 'premium';
@@ -31,10 +32,11 @@ type MitraFormData = {
   mitraId: string;
 };
 
-const generateMitraId = () =>
-  `PM-IND-${Math.floor(100000 + Math.random() * 900000)}`;
-
-export default function MitraScreen({ onBack, onRegistered }: Props) {
+export default function MitraScreen({
+  onBack,
+  onRegistered,
+  onNotifications,
+}: Props) {
   const [step, setStep] = useState<'form' | 'card'>('form');
   const [membership, setMembership] = useState<MembershipType>('premium');
   const [name, setName] = useState('');
@@ -72,7 +74,13 @@ export default function MitraScreen({ onBack, onRegistered }: Props) {
         membership,
       });
 
-      const mitraId = created.mitraId || generateMitraId();
+      const mitraId = String(created.mitraId || '').trim();
+      if (!mitraId) {
+        setErrorMsg(
+          'Registration saved, but server did not return a Mitra ID. Please try again or contact support.',
+        );
+        return;
+      }
       setCardData({
         name: formName,
         profession: formProfession,
@@ -123,7 +131,7 @@ export default function MitraScreen({ onBack, onRegistered }: Props) {
             Volunteer for India's Net Zero Mission
           </Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>

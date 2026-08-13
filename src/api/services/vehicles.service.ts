@@ -23,6 +23,37 @@ export type VehicleTreesResponse = {
 };
 
 export const vehiclesService = {
+  requestOtp(plate: string) {
+    return apiRequest<{
+      message: string;
+      maskedMobile?: string;
+      plate: string;
+    }>('/vehicles/otp/request', {
+      method: 'POST',
+      body: { plate },
+    });
+  },
+
+  verifyOtp(plate: string, code: string) {
+    return apiRequest<{ verified: boolean; plate: string; message: string }>(
+      '/vehicles/otp/verify',
+      {
+        method: 'POST',
+        body: { plate, code },
+      },
+    );
+  },
+
+  getCertificate(id: string) {
+    return apiRequest<{
+      pdfBase64: string;
+      fileName: string;
+      text: string;
+      downloadToken: string;
+      downloadPath: string;
+    }>(`/vehicles/${id}/certificate`);
+  },
+
   create(payload: CreateVehiclePayload) {
     return apiRequest<ApiVehicle>('/vehicles', {
       method: 'POST',

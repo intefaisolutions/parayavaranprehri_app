@@ -1,5 +1,3 @@
-import { getMapTreeCount, MAP_TREES } from './mapTreesData';
-
 export type Vehicle = {
   id: string;
   name: string;
@@ -43,11 +41,6 @@ export const INITIAL_VEHICLES: Vehicle[] = [
   },
 ];
 
-const INITIAL_VEHICLE_TREES = INITIAL_VEHICLES.reduce(
-  (sum, vehicle) => sum + vehicle.trees,
-  0,
-);
-
 export type AddedVehicle = {
   id?: string;
   plate: string;
@@ -56,6 +49,7 @@ export type AddedVehicle = {
   fuel?: string;
 };
 
+/** Optimistic card after create — real trees/CO₂ come from reload + getTrees. */
 export function createVehicleFromAdded(added: AddedVehicle): Vehicle {
   return {
     id: added.id ?? String(Date.now()),
@@ -68,16 +62,12 @@ export function createVehicleFromAdded(added: AddedVehicle): Vehicle {
       month: 'short',
       year: 'numeric',
     }),
-    trees: 3,
-    co2: 45,
-    survival: '100%',
+    trees: 0,
+    co2: 0,
+    survival: '—',
     status: 'Active',
     iconUrl: 'https://img.icons8.com/color/96/suv.png',
   };
-}
-
-export function generateVehicleId() {
-  return `VH-IND-2026-${String(Math.floor(Math.random() * 900000)).padStart(6, '0')}`;
 }
 
 export type VehicleStats = {
@@ -109,37 +99,18 @@ export function computeVehicleStats(vehicles: Vehicle[]): VehicleStats {
     vehicles.reduce((sum, v) => sum + parseSurvival(v.survival), 0) /
       vehicles.length,
   );
-  const netZeroProgress = Math.min(
-    100,
-    Math.round(totalCo2 / 8 + totalTrees * 2),
-  );
 
   return {
     vehicleCount: vehicles.length,
     totalTrees,
     totalCo2,
     avgSurvival,
-    netZeroProgress,
+    /** Net Zero % comes from mission-progress API — not invented here. */
+    netZeroProgress: 0,
   };
 }
 
-/** Profile/dashboard stats: map plantations + newly added vehicle trees */
+/** Profile/dashboard stats from real vehicle list only (no MAP_TREES inflation). */
 export function computeProfileStats(vehicles: Vehicle[]): VehicleStats {
-  const vehicleStats = computeVehicleStats(vehicles);
-  const extraVehicleTrees = Math.max(
-    0,
-    vehicleStats.totalTrees - INITIAL_VEHICLE_TREES,
-  );
-
-  return {
-    ...vehicleStats,
-    totalTrees: getMapTreeCount(MAP_TREES) + extraVehicleTrees,
-    netZeroProgress: Math.min(
-      100,
-      Math.round(
-        vehicleStats.totalCo2 / 8 +
-          (getMapTreeCount(MAP_TREES) + extraVehicleTrees) * 2,
-      ),
-    ),
-  };
+  return computeVehicleStats(vehicles);
 }

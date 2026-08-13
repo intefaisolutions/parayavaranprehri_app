@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -9,17 +10,15 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {
-  ACHIEVEMENTS,
   Achievement,
-  INSPIRATION_TEXT,
-  PROFILE_STATS,
-  PROFILE_TAGS,
+  ProfileStat,
 } from '../data/journeyData';
-import { journeyService } from '../api';
+import { ApiError, journeyService } from '../api';
 import { getBottomInset, getTopInset } from '../utils/layout';
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
 
 const BADGE_COLORS: Record<Achievement['type'], string> = {
@@ -54,26 +53,42 @@ const TYPE_ICONS: Record<Achievement['type'], string> = {
   international: '🌐',
 };
 
-export default function JourneyAchievementsScreen({ onBack }: Props) {
-  const [profileName, setProfileName] = useState('Dr. Ram Patidar');
+export default function JourneyAchievementsScreen({
+  onBack,
+  onNotifications,
+}: Props) {
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [profileName, setProfileName] = useState('');
   const [profileSubtitle, setProfileSubtitle] = useState(
     'Journey & Achievements',
   );
-  const [achievements, setAchievements] = useState<Achievement[]>(ACHIEVEMENTS);
-  const [stats, setStats] = useState(PROFILE_STATS);
-  const [tags, setTags] = useState(PROFILE_TAGS);
-  const [inspiration, setInspiration] = useState(INSPIRATION_TEXT);
+  const [profilePhoto, setProfilePhoto] = useState<string | undefined>();
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [stats, setStats] = useState<ProfileStat[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [inspiration, setInspiration] = useState('');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const timeline = await journeyService.getTimeline();
-        if (!mounted || !timeline) return;
+        if (!mounted) return;
+        if (!timeline?.profile && !(timeline?.achievements?.length > 0)) {
+          setErrorMsg('');
+          setProfileName('');
+          setAchievements([]);
+          setStats([]);
+          setTags([]);
+          setInspiration('');
+          return;
+        }
         if (timeline.profile?.name) setProfileName(timeline.profile.name);
         if (timeline.profile?.subtitle) {
           setProfileSubtitle(timeline.profile.subtitle);
         }
+        if (timeline.profile?.photo) setProfilePhoto(timeline.profile.photo);
         if (timeline.profile?.stats?.length) {
           setStats(timeline.profile.stats);
         }
@@ -94,15 +109,38 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
               imageUrl: item.imageUrl,
             })),
           );
+        } else {
+          setAchievements([]);
         }
-      } catch {
-        // keep static fallback
+        setErrorMsg('');
+      } catch (error) {
+        if (mounted) {
+          setErrorMsg(
+            error instanceof ApiError
+              ? error.message
+              : 'Failed to load journey',
+          );
+          setProfileName('');
+          setAchievements([]);
+          setStats([]);
+          setTags([]);
+          setInspiration('');
+        }
+      } finally {
+        if (mounted) setLoading(false);
       }
     })();
     return () => {
       mounted = false;
     };
   }, []);
+
+  const isEmpty =
+    !loading &&
+    !errorMsg &&
+    !profileName &&
+    achievements.length === 0 &&
+    stats.length === 0;
 
   return (
     <View style={styles.root}>
@@ -111,121 +149,127 @@ export default function JourneyAchievementsScreen({ onBack }: Props) {
           <Text style={styles.backIcon}>←</Text>
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>{profileName}</Text>
+          <Text style={styles.headerTitle}>
+            {profileName || 'Journey & Achievements'}
+          </Text>
           <Text style={styles.headerSubtitle}>{profileSubtitle}</Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: getBottomInset(32) },
-        ]}
-        showsVerticalScrollIndicator={false}>
-        <LinearGradient
-          colors={['#0c4820', '#1a6b35', '#a36329']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.profileCard}>
-          <View style={styles.profileTopRow}>
-            <View style={styles.profileAvatarWrap}>
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileEmoji}>👨🏽‍🦳</Text>
-              </View>
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#136e35" />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: getBottomInset(32) },
+          ]}
+          showsVerticalScrollIndicator={false}>
+          {errorMsg ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>Couldn’t load journey</Text>
+              <Text style={styles.emptyBody}>{errorMsg}</Text>
             </View>
+          ) : null}
 
-            <View style={styles.profileInfo}>
-              <View style={styles.inspiredBadge}>
-                <Text style={styles.inspiredBadgeText}>
-                  ✨ INSPIRED BY DR. RAM PATIDAR
-                </Text>
-              </View>
-              <Text style={styles.profileName}>{profileName}</Text>
-              <Text style={styles.profileDesc}>
-                Environmentalist, World Record Holder, Biodiversity
-                Conservationist & Social Reformer
+          {isEmpty ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>Journey content coming soon</Text>
+              <Text style={styles.emptyBody}>
+                Profile and achievements will appear here once published from
+                the CMS.
               </Text>
-              <View style={styles.locationRow}>
-                <Text style={styles.locationIcon}>📍</Text>
-                <Text style={styles.locationText}>
-                  Kunda Palaswad, Madhya Pradesh
-                </Text>
-              </View>
             </View>
-          </View>
+          ) : null}
 
-          <View style={styles.statsRow}>
-            {stats.map(stat => (
-              <View key={stat.label} style={styles.statPill}>
-                <Text style={styles.statValue} numberOfLines={1}>
-                  {stat.value}
-                </Text>
-                <Text style={styles.statLabel} numberOfLines={2}>
-                  {stat.label}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.tagsRow}>
-            {tags.map(tag => (
-              <View key={tag} style={styles.tagPill}>
-                <Text style={styles.tagText}>🌱 {tag}</Text>
-              </View>
-            ))}
-          </View>
-        </LinearGradient>
-
-        <View style={styles.inspirationCard}>
-          <Text style={styles.inspirationTitle}>
-            THE INSPIRATION BEHIND PARYAVARAN PRAHRI
-          </Text>
-          <Text style={styles.inspirationText}>{inspiration}</Text>
-        </View>
-
-        <Text style={styles.timelineTitle}>Achievement Timeline</Text>
-
-        <View style={styles.timeline}>
-          <View style={styles.timelineLine} />
-
-          {achievements.map((item, index) => (
-            <TimelineItem
-              key={item.id}
-              item={item}
-              isLast={index === achievements.length - 1}
-            />
-          ))}
-        </View>
-
-        <View style={styles.bottomCards}>
-          <Pressable style={styles.bottomCardWrap}>
+          {profileName || stats.length > 0 || tags.length > 0 ? (
             <LinearGradient
-              colors={['#0c4820', '#2b964f']}
+              colors={['#0c4820', '#1a6b35', '#a36329']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.bottomCardGreen}>
-              <Text style={styles.bottomCardIcon}>🖼️</Text>
-              <Text style={styles.bottomCardTitleWhite}>Media Gallery</Text>
-              <Text style={styles.bottomCardSubWhite}>
-                News, awards & records
-              </Text>
-            </LinearGradient>
-          </Pressable>
+              style={styles.profileCard}>
+              <View style={styles.profileTopRow}>
+                <View style={styles.profileAvatarWrap}>
+                  <View style={styles.profileAvatar}>
+                    {profilePhoto ? (
+                      <Image
+                        source={{ uri: profilePhoto }}
+                        style={styles.profilePhoto}
+                      />
+                    ) : (
+                      <Text style={styles.profileEmoji}>🌱</Text>
+                    )}
+                  </View>
+                </View>
 
-          <Pressable style={styles.bottomCardWrap}>
-            <View style={styles.bottomCardWhite}>
-              <Text style={styles.bottomCardIconGreen}>📄</Text>
-              <Text style={styles.bottomCardTitle}>Document Library</Text>
-              <Text style={styles.bottomCardSub}>
-                Citations & certificates
+                <View style={styles.profileInfo}>
+                  {profileName ? (
+                    <Text style={styles.profileName}>{profileName}</Text>
+                  ) : null}
+                  <Text style={styles.profileDesc}>{profileSubtitle}</Text>
+                </View>
+              </View>
+
+              {stats.length > 0 ? (
+                <View style={styles.statsRow}>
+                  {stats.map(stat => (
+                    <View key={stat.label} style={styles.statPill}>
+                      <Text style={styles.statValue} numberOfLines={1}>
+                        {stat.value}
+                      </Text>
+                      <Text style={styles.statLabel} numberOfLines={2}>
+                        {stat.label}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {tags.length > 0 ? (
+                <View style={styles.tagsRow}>
+                  {tags.map(tag => (
+                    <View key={tag} style={styles.tagPill}>
+                      <Text style={styles.tagText}>🌱 {tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </LinearGradient>
+          ) : null}
+
+          {inspiration ? (
+            <View style={styles.inspirationCard}>
+              <Text style={styles.inspirationTitle}>
+                THE INSPIRATION BEHIND PARYAVARAN PRAHRI
               </Text>
+              <Text style={styles.inspirationText}>{inspiration}</Text>
             </View>
-          </Pressable>
-        </View>
-      </ScrollView>
+          ) : null}
+
+          {achievements.length > 0 ? (
+            <>
+              <Text style={styles.timelineTitle}>Achievement Timeline</Text>
+              <View style={styles.timeline}>
+                <View style={styles.timelineLine} />
+                {achievements.map((item, index) => (
+                  <TimelineItem
+                    key={item.id}
+                    item={item}
+                    isLast={index === achievements.length - 1}
+                  />
+                ))}
+              </View>
+            </>
+          ) : !isEmpty && !errorMsg ? (
+            <Text style={styles.emptyBody}>No achievements published yet.</Text>
+          ) : null}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -276,6 +320,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f4f9f4',
   },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -306,7 +355,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
     color: '#0a3617',
   },
@@ -316,201 +365,178 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    padding: 16,
+  },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e8eee9',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0a3617',
+    marginBottom: 8,
+  },
+  emptyBody: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 20,
+    textAlign: 'center',
   },
   profileCard: {
-    borderRadius: 28,
+    borderRadius: 20,
     padding: 18,
     marginBottom: 16,
-    overflow: 'hidden',
   },
   profileTopRow: {
     flexDirection: 'row',
-    marginBottom: 18,
+    gap: 14,
+    marginBottom: 16,
   },
   profileAvatarWrap: {
-    marginRight: 14,
+    width: 72,
+    height: 72,
   },
   profileAvatar: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#c4a683',
-    borderWidth: 3,
-    borderColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  profilePhoto: {
+    width: 72,
+    height: 72,
+  },
   profileEmoji: {
-    fontSize: 36,
+    fontSize: 32,
   },
   profileInfo: {
     flex: 1,
   },
-  inspiredBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  inspiredBadgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
   profileName: {
-    color: '#fff',
     fontSize: 20,
     fontWeight: '800',
-    marginBottom: 4,
+    color: '#fff',
+    marginBottom: 6,
   },
   profileDesc: {
-    color: '#e8f5ea',
-    fontSize: 11,
-    lineHeight: 16,
-    marginBottom: 8,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  locationIcon: {
-    fontSize: 11,
-    marginRight: 4,
-  },
-  locationText: {
-    color: '#c8e6c9',
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 18,
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginBottom: 14,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
   },
   statPill: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: '45%',
+    flexGrow: 1,
   },
   statValue: {
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '900',
-    marginBottom: 2,
-    textAlign: 'center',
+    fontWeight: '800',
+    fontSize: 15,
   },
   statLabel: {
-    color: '#dcedc8',
-    fontSize: 8,
-    fontWeight: '500',
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 11,
+    marginTop: 2,
   },
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   tagPill: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 16,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
+    paddingVertical: 6,
   },
   tagText: {
     color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
   },
   inspirationCard: {
     backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 3,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
   },
   inspirationTitle: {
-    color: '#00a859',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.6,
-    marginBottom: 12,
+    color: '#2b964f',
+    marginBottom: 8,
+    letterSpacing: 0.4,
   },
   inspirationText: {
-    color: '#4b5563',
     fontSize: 13,
-    lineHeight: 21,
+    color: '#4b5563',
+    lineHeight: 20,
   },
   timelineTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: '#0a3617',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   timeline: {
     position: 'relative',
-    paddingLeft: 4,
+    paddingLeft: 8,
   },
   timelineLine: {
     position: 'absolute',
-    left: 18,
+    left: 23,
     top: 8,
-    bottom: 24,
+    bottom: 8,
     width: 2,
-    backgroundColor: '#c8e6c9',
-    borderStyle: 'dashed',
+    backgroundColor: '#d1e7d8',
   },
   timelineItem: {
     flexDirection: 'row',
-    marginBottom: 18,
+    marginBottom: 16,
   },
   timelineItemLast: {
     marginBottom: 0,
   },
   timelineLeft: {
-    width: 36,
+    width: 40,
     alignItems: 'center',
-    marginRight: 10,
-    zIndex: 2,
   },
   timelineDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#f4f9f4',
+    zIndex: 2,
   },
   timelineDotIcon: {
     color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
   },
   timelineCard: {
     flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 16,
+    padding: 14,
+    marginLeft: 8,
   },
   timelineCardHeader: {
     flexDirection: 'row',
@@ -519,14 +545,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   timelineYear: {
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#00a859',
+    color: '#0a3617',
   },
   typeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   typeBadgeText: {
     color: '#fff',
@@ -534,76 +560,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   timelineCardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0a3617',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
     marginBottom: 4,
   },
   timelineCardSubtitle: {
     fontSize: 12,
     color: '#6b7280',
-    marginBottom: 10,
   },
   timelineImage: {
     width: '100%',
     height: 140,
-    borderRadius: 14,
-    backgroundColor: '#eef2ef',
-  },
-  bottomCards: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
-  },
-  bottomCardWrap: {
-    flex: 1,
-  },
-  bottomCardGreen: {
-    borderRadius: 22,
-    padding: 16,
-    minHeight: 130,
-    justifyContent: 'flex-end',
-  },
-  bottomCardWhite: {
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    padding: 16,
-    minHeight: 130,
-    justifyContent: 'flex-end',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  bottomCardIcon: {
-    fontSize: 22,
-    marginBottom: 12,
-  },
-  bottomCardIconGreen: {
-    fontSize: 22,
-    marginBottom: 12,
-  },
-  bottomCardTitleWhite: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  bottomCardSubWhite: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  bottomCardTitle: {
-    color: '#0a3617',
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  bottomCardSub: {
-    color: '#6b7280',
-    fontSize: 11,
-    lineHeight: 16,
+    borderRadius: 12,
+    marginTop: 10,
   },
 });

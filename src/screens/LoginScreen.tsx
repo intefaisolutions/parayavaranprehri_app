@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -114,11 +115,14 @@ export default function LoginScreen() {
           bounces
           nestedScrollEnabled>
           <View style={[styles.brandRow, { marginTop: getTopInset(20) }]}>
-            <View style={styles.logoCircle}>
-              <Text style={styles.logoLeaf}>🌿</Text>
-            </View>
+            <Image
+              source={require('../assets/images/app_logo.png')}
+              style={styles.logoImage}
+              resizeMode="cover"
+              accessibilityLabel="Paryavaran Prahri logo"
+            />
             <View>
-              <Text style={styles.brandName}>Prayavarn Prehri</Text>
+              <Text style={styles.brandName}>Paryavaran Prahri</Text>
               <Text style={styles.brandTagline}>Drive Green. Grow Future.</Text>
             </View>
           </View>
@@ -230,17 +234,12 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     zIndex: 20,
   },
-  logoCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.logoBg,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     marginRight: 14,
-  },
-  logoLeaf: {
-    fontSize: 22,
+    backgroundColor: COLORS.white,
   },
   brandName: {
     color: COLORS.white,

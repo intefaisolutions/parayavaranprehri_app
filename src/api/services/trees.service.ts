@@ -52,16 +52,36 @@ export const treesService = {
       oxygenKg?: number;
       co2Kg?: number;
       monthlyPhotos?: string[];
+      monthlySeries?: Array<{
+        label: string;
+        progress: number;
+        photoUrl?: string;
+      }>;
       progress?: number;
       vehicleNumber?: string | null;
       vidhanSabha?: string | null;
       treeAgeYears?: number;
+      image?: string | null;
     }>(`/trees/${id}/analytics`);
   },
 
   update(id: string, payload: Partial<CreateTreePayload>) {
     return apiRequest<ApiTree>(`/trees/${id}`, {
       method: 'PUT',
+      body: payload,
+    });
+  },
+
+  verify(
+    id: string,
+    payload: {
+      status?: CreateTreePayload['status'];
+      remarks?: string;
+      image?: string;
+    } = {},
+  ) {
+    return apiRequest<ApiTree>(`/trees/${id}/verify`, {
+      method: 'PATCH',
       body: payload,
     });
   },

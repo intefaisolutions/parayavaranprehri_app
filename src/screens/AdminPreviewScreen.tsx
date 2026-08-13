@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
+  missionProgressService,
   reportsService,
   settingsService,
   unwrapList,
@@ -17,77 +19,95 @@ import {
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
 
-const STATS = [
-  { icon: 'tree-outline' as const, label: 'Trees Planted', value: '1,84,230' },
-  { icon: 'car-outline' as const, label: 'Active Vehicles', value: '42,190' },
-  { icon: 'map-marker-account-outline' as const, label: 'Vidhan Sabhas', value: '9' },
-  { icon: 'shield-check-outline' as const, label: 'Survival %', value: '91%' },
-];
+type StatCard = {
+  icon: string;
+  label: string;
+  value: string;
+};
 
-const MONTHLY_DATA = [
-  { month: 'Jul', height: 40 },
-  { month: 'Aug', height: 55 },
-  { month: 'Sep', height: 68 },
-  { month: 'Oct', height: 78 },
-  { month: 'Nov', height: 88 },
-  { month: 'Dec', height: 95 },
-  { month: 'Jan', height: 100 },
-  { month: 'Feb', height: 85 },
-  { month: 'Mar', height: 72 },
-];
+type SabhaRow = {
+  rank: number;
+  name: string;
+  trees: string;
+  vehicles: string;
+  progress: number;
+};
 
-const TOP_SABHAS = [
-  { rank: 1, name: 'Rau', trees: '42,190', co2: '612t CO₂', progress: 1 },
-  { rank: 2, name: 'Indore-2', trees: '31,200', co2: '451t CO₂', progress: 0.74 },
-  { rank: 3, name: 'Mhow', trees: '24,800', co2: '358t CO₂', progress: 0.59 },
-  { rank: 4, name: 'Sanwer', trees: '19,400', co2: '280t CO₂', progress: 0.46 },
-];
+type ReportRow = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  generatedBy?: string;
+};
 
-const ADMIN_SETTINGS = [
-  'Data source',
-  'Analytics',
-  'Reports',
-  'Ranking rules',
-  'Constituency settings',
-  'Roles & access',
-];
-
-export default function AdminPreviewScreen({ onBack }: Props) {
-  const [stats, setStats] = useState(STATS);
-  const [topSabhas, setTopSabhas] = useState(TOP_SABHAS);
-  const [adminSettings, setAdminSettings] = useState(ADMIN_SETTINGS);
+export default function AdminPreviewScreen({
+  onBack,
+  onNotifications,
+}: Props) {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<StatCard[]>([]);
+  const [topSabhas, setTopSabhas] = useState<SabhaRow[]>([]);
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [adminSettings, setAdminSettings] = useState<string[]>([]);
+  const [monthlyBars, setMonthlyBars] = useState<
+    Array<{ label: string; count: number; heightPct: number }>
+  >([]);
+  const [monthlyTotal, setMonthlyTotal] = useState(0);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      let nextStats: StatCard[] = [];
+      let nextSabhas: SabhaRow[] = [];
+      let nextReports: ReportRow[] = [];
+      let nextSettings: string[] = [];
+      let missionPercent: string | null = null;
+
       try {
-        const sabhas = await vidhanSabhasService.list({ page: 1, limit: 20 });
-        const list = unwrapList(sabhas as any);
-        if (mounted && list.length > 0) {
+        const progress = await missionProgressService.get();
+        if (progress && typeof progress.percent === 'number') {
+          missionPercent = `${progress.percent}%`;
+        }
+      } catch {
+        // optional
+      }
+
+      try {
+        const sabhas = await vidhanSabhasService.list({ page: 1, limit: 50 });
+        const list = unwrapList(sabhas as any) as Array<{
+          vidhanSabhaName?: string;
+          totalTrees?: number;
+          totalVehicles?: number;
+        }>;
+        if (list.length > 0) {
+          const sorted = [...list].sort(
+            (a, b) => Number(b.totalTrees || 0) - Number(a.totalTrees || 0),
+          );
           const maxTrees = Math.max(
-            ...list.map((s: any) => Number(s.totalTrees || 0)),
+            ...sorted.map(s => Number(s.totalTrees || 0)),
             1,
           );
-          setTopSabhas(
-            list.slice(0, 4).map((s: any, index: number) => ({
-              rank: index + 1,
-              name: s.vidhanSabhaName,
-              trees: String(s.totalTrees ?? 0),
-              co2: `${s.totalVehicles ?? 0} vehicles`,
-              progress: Math.min(1, Number(s.totalTrees || 0) / maxTrees),
-            })),
-          );
-          const totalTrees = list.reduce(
-            (sum: number, s: any) => sum + Number(s.totalTrees || 0),
+          nextSabhas = sorted.slice(0, 8).map((s, index) => ({
+            rank: index + 1,
+            name: s.vidhanSabhaName || `Sabha ${index + 1}`,
+            trees: Number(s.totalTrees || 0).toLocaleString('en-IN'),
+            vehicles: `${Number(s.totalVehicles || 0).toLocaleString('en-IN')} vehicles`,
+            progress: Math.min(1, Number(s.totalTrees || 0) / maxTrees),
+          }));
+
+          const totalTrees = sorted.reduce(
+            (sum, s) => sum + Number(s.totalTrees || 0),
             0,
           );
-          const totalVehicles = list.reduce(
-            (sum: number, s: any) => sum + Number(s.totalVehicles || 0),
+          const totalVehicles = sorted.reduce(
+            (sum, s) => sum + Number(s.totalVehicles || 0),
             0,
           );
-          setStats([
+          nextStats = [
             {
               icon: 'tree-outline',
               label: 'Trees Planted',
@@ -101,37 +121,96 @@ export default function AdminPreviewScreen({ onBack }: Props) {
             {
               icon: 'map-marker-account-outline',
               label: 'Vidhan Sabhas',
-              value: String(list.length),
+              value: String(sorted.length),
             },
             {
               icon: 'shield-check-outline',
-              label: 'Survival %',
-              value: '91%',
+              label: 'Mission Progress',
+              value: missionPercent ?? '—',
             },
-          ]);
+          ];
+        } else if (missionPercent) {
+          nextStats = [
+            {
+              icon: 'shield-check-outline',
+              label: 'Mission Progress',
+              value: missionPercent,
+            },
+          ];
         }
       } catch {
-        // keep fallback
+        if (missionPercent) {
+          nextStats = [
+            {
+              icon: 'shield-check-outline',
+              label: 'Mission Progress',
+              value: missionPercent,
+            },
+          ];
+        }
       }
+
+      try {
+        const monthly = await reportsService.monthlyPlantations({ months: 6 });
+        if (monthly?.months) {
+          setMonthlyBars(
+            monthly.months.map(m => ({
+              label: m.label,
+              count: m.count,
+              heightPct: m.heightPct,
+            })),
+          );
+          setMonthlyTotal(Number(monthly.total) || 0);
+        }
+      } catch {
+        // optional chart
+      }
+
+      try {
+        const reportsRes = await reportsService.list({ page: 1, limit: 10 });
+        const list = unwrapList(reportsRes as any) as Array<{
+          _id?: string;
+          reportName?: string;
+          reportType?: string;
+          status?: string;
+          generatedBy?: string;
+        }>;
+        nextReports = list.map((r, index) => ({
+          id: String(r._id || index),
+          name: r.reportName || `Report ${index + 1}`,
+          type: r.reportType || 'Report',
+          status: r.status || 'Unknown',
+          generatedBy: r.generatedBy,
+        }));
+      } catch {
+        nextReports = [];
+      }
+
       try {
         const settings = await settingsService.list({ page: 1, limit: 20 });
-        const list = unwrapList(settings as any);
-        if (mounted && list.length > 0) {
-          setAdminSettings(list.map((s: any) => s.settingName));
-        }
+        const list = unwrapList(settings as any) as Array<{
+          settingName?: string;
+        }>;
+        nextSettings = list
+          .map(s => s.settingName)
+          .filter((name): name is string => Boolean(name));
       } catch {
-        // keep fallback
+        nextSettings = [];
       }
-      try {
-        await reportsService.list({ page: 1, limit: 5 });
-      } catch {
-        // optional
+
+      if (mounted) {
+        setStats(nextStats);
+        setTopSabhas(nextSabhas);
+        setReports(nextReports);
+        setAdminSettings(nextSettings);
+        setLoading(false);
       }
     })();
     return () => {
       mounted = false;
     };
   }, []);
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(10) }]}>
@@ -141,145 +220,172 @@ export default function AdminPreviewScreen({ onBack }: Props) {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Admin Preview</Text>
           <Text style={styles.headerSubtitle}>
-            Indore · Vidhan Sabha analytics
+            Live Vidhan Sabha · Reports
           </Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: getBottomInset(32) },
-        ]}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.configBanner}>
-          <View style={styles.configBannerHeader}>
-            <MaterialCommunityIcons name="tune-variant" size={18} color="#0c4820" />
-            <Text style={styles.configBannerTitle}>Admin Configurable Module</Text>
-          </View>
-          <Text style={styles.configBannerText}>
-            Data source · Analytics · Reports · Ranking rules · Constituency
-            settings — all configurable by the platform admin. No hardcoded
-            assumptions.
-          </Text>
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#136e35" />
         </View>
-
-        <View style={styles.statsGrid}>
-          {stats.map(stat => (
-            <View key={stat.label} style={styles.statCard}>
-              <View style={styles.statIconCircle}>
-                <MaterialCommunityIcons
-                  name={stat.icon}
-                  size={20}
-                  color="#2b964f"
-                />
-              </View>
-              <Text style={styles.statLabel}>{stat.label}</Text>
-              <Text style={styles.statValue}>{stat.value}</Text>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: getBottomInset(32) },
+          ]}
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.configBanner}>
+            <View style={styles.configBannerHeader}>
+              <MaterialCommunityIcons
+                name="tune-variant"
+                size={18}
+                color="#0c4820"
+              />
+              <Text style={styles.configBannerTitle}>
+                Live aggregations from CMS
+              </Text>
             </View>
-          ))}
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Monthly plantations</Text>
-          <View style={styles.configBadge}>
-            <MaterialCommunityIcons name="cog-outline" size={12} color="#e65100" />
-            <Text style={styles.configBadgeText}>Configurable</Text>
+            <Text style={styles.configBannerText}>
+              Vidhan Sabha totals, mission progress, monthly plantations, and
+              reports from live APIs.
+            </Text>
           </View>
-        </View>
 
-        <View style={styles.chartCard}>
-          <View style={styles.chartBars}>
-            {MONTHLY_DATA.map(item => (
-              <View key={item.month} style={styles.barColumn}>
-                <View style={styles.barTrack}>
+          {stats.length > 0 ? (
+            <View style={styles.statsGrid}>
+              {stats.map(stat => (
+                <View key={stat.label} style={styles.statCard}>
+                  <View style={styles.statIconCircle}>
+                    <MaterialCommunityIcons
+                      name={stat.icon as any}
+                      size={20}
+                      color="#2b964f"
+                    />
+                  </View>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                  <Text style={styles.statValue}>{stat.value}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>No constituency stats yet.</Text>
+          )}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              Monthly plantations ({monthlyTotal})
+            </Text>
+          </View>
+          {monthlyBars.length === 0 ? (
+            <Text style={styles.emptyText}>No plantation months yet.</Text>
+          ) : (
+            <View style={styles.chartCard}>
+              <View style={styles.chartBars}>
+                {monthlyBars.map(item => (
+                  <View key={item.label} style={styles.barColumn}>
+                    <Text style={styles.barCount}>{item.count}</Text>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          {
+                            height: `${Math.max(4, item.heightPct)}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.barLabel}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Top Vidhan Sabhas</Text>
+          </View>
+
+          {topSabhas.length === 0 ? (
+            <Text style={styles.emptyText}>No Vidhan Sabha data yet.</Text>
+          ) : (
+            topSabhas.map(item => (
+              <View key={`${item.rank}-${item.name}`} style={styles.sabhaCard}>
+                <View style={styles.sabhaTop}>
+                  <View style={styles.rankBadge}>
+                    <Text style={styles.rankText}>#{item.rank}</Text>
+                  </View>
+                  <View style={styles.sabhaInfo}>
+                    <Text style={styles.sabhaName}>
+                      {item.name}{' '}
+                      <Text style={styles.sabhaSub}>Vidhan Sabha</Text>
+                    </Text>
+                  </View>
+                  <View style={styles.sabhaStats}>
+                    <Text style={styles.sabhaTrees}>{item.trees}</Text>
+                    <Text style={styles.sabhaCo2}>{item.vehicles}</Text>
+                  </View>
+                </View>
+                <View style={styles.progressTrack}>
                   <View
-                    style={[styles.barFill, { height: `${item.height}%` }]}
+                    style={[
+                      styles.progressFill,
+                      { width: `${item.progress * 100}%` },
+                    ]}
                   />
                 </View>
-                <Text style={styles.barLabel}>{item.month}</Text>
               </View>
-            ))}
-          </View>
-        </View>
+            ))
+          )}
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Top performing Vidhan Sabhas</Text>
-          <View style={styles.configBadge}>
-            <MaterialCommunityIcons name="cog-outline" size={12} color="#e65100" />
-            <Text style={styles.configBadgeText}>Configurable</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Reports</Text>
           </View>
-        </View>
 
-        {topSabhas.map(item => (
-          <View key={item.name} style={styles.sabhaCard}>
-            <View style={styles.sabhaTop}>
-              <View style={styles.rankBadge}>
-                <Text style={styles.rankText}>#{item.rank}</Text>
-              </View>
-              <View style={styles.sabhaInfo}>
-                <Text style={styles.sabhaName}>
-                  {item.name}{' '}
-                  <Text style={styles.sabhaSub}>Vidhan Sabha</Text>
+          {reports.length === 0 ? (
+            <Text style={styles.emptyText}>No reports generated yet.</Text>
+          ) : (
+            reports.map(report => (
+              <View key={report.id} style={styles.reportCard}>
+                <View style={styles.reportTop}>
+                  <Text style={styles.reportName}>{report.name}</Text>
+                  <View style={styles.reportStatus}>
+                    <Text style={styles.reportStatusText}>{report.status}</Text>
+                  </View>
+                </View>
+                <Text style={styles.reportMeta}>
+                  {report.type}
+                  {report.generatedBy ? ` · ${report.generatedBy}` : ''}
                 </Text>
               </View>
-              <View style={styles.sabhaStats}>
-                <Text style={styles.sabhaTrees}>{item.trees}</Text>
-                <Text style={styles.sabhaCo2}>{item.co2}</Text>
+            ))
+          )}
+
+          {adminSettings.length > 0 ? (
+            <View style={styles.settingsCard}>
+              <View style={styles.settingsHeader}>
+                <MaterialCommunityIcons
+                  name="tune-variant"
+                  size={18}
+                  color="#f27e20"
+                />
+                <Text style={styles.settingsTitle}>Settings · from CMS</Text>
+              </View>
+              <View style={styles.settingsGrid}>
+                {adminSettings.map(label => (
+                  <View key={label} style={styles.settingsBtn}>
+                    <Text style={styles.settingsBtnText}>{label}</Text>
+                  </View>
+                ))}
               </View>
             </View>
-            <View style={styles.progressTrack}>
-              <View
-                style={[styles.progressFill, { width: `${item.progress * 100}%` }]}
-              />
-            </View>
-          </View>
-        ))}
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Vehicle verifications</Text>
-          <View style={styles.configBadge}>
-            <MaterialCommunityIcons name="cog-outline" size={12} color="#e65100" />
-            <Text style={styles.configBadgeText}>Configurable</Text>
-          </View>
-        </View>
-
-        <View style={styles.verifyRow}>
-          <View style={[styles.verifyCard, styles.verifyVerified]}>
-            <Text style={styles.verifyLabel}>VERIFIED</Text>
-            <Text style={[styles.verifyValue, styles.verifyValueGreen]}>
-              38,200
-            </Text>
-          </View>
-          <View style={[styles.verifyCard, styles.verifyPending]}>
-            <Text style={styles.verifyLabel}>PENDING</Text>
-            <Text style={[styles.verifyValue, styles.verifyValueOrange]}>
-              2,840
-            </Text>
-          </View>
-          <View style={[styles.verifyCard, styles.verifyRejected]}>
-            <Text style={styles.verifyLabel}>REJECTED</Text>
-            <Text style={[styles.verifyValue, styles.verifyValueRed]}>1,150</Text>
-          </View>
-        </View>
-
-        <View style={styles.settingsCard}>
-          <View style={styles.settingsHeader}>
-            <MaterialCommunityIcons name="tune-variant" size={18} color="#f27e20" />
-            <Text style={styles.settingsTitle}>Settings · Admin Only</Text>
-          </View>
-          <View style={styles.settingsGrid}>
-            {adminSettings.map(label => (
-              <Pressable key={label} style={styles.settingsBtn}>
-                <Text style={styles.settingsBtnText}>{label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </ScrollView>
+          ) : null}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -288,6 +394,11 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f4f9f4',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -353,6 +464,11 @@ const styles = StyleSheet.create({
     color: '#2b964f',
     lineHeight: 18,
   },
+  emptyText: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -364,11 +480,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
   },
   statIconCircle: {
     width: 40,
@@ -401,30 +512,11 @@ const styles = StyleSheet.create({
     color: '#0a3617',
     flex: 1,
   },
-  configBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#fff3e0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  configBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#e65100',
-  },
   chartCard: {
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 16,
     marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
   },
   chartBars: {
     flexDirection: 'row',
@@ -435,6 +527,12 @@ const styles = StyleSheet.create({
   barColumn: {
     flex: 1,
     alignItems: 'center',
+  },
+  barCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2b964f',
+    marginBottom: 4,
   },
   barTrack: {
     width: 18,
@@ -460,11 +558,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
   },
   sabhaTop: {
     flexDirection: 'row',
@@ -521,55 +614,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#2b964f',
     borderRadius: 3,
   },
-  verifyRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
-  },
-  verifyCard: {
-    flex: 1,
+  reportCard: {
+    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 14,
+    marginBottom: 10,
+  },
+  reportTop: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
   },
-  verifyVerified: {
-    backgroundColor: '#e8f5e9',
-  },
-  verifyPending: {
-    backgroundColor: '#fff8e1',
-  },
-  verifyRejected: {
-    backgroundColor: '#ffebee',
-  },
-  verifyLabel: {
-    fontSize: 9,
+  reportName: {
+    flex: 1,
+    fontSize: 14,
     fontWeight: '700',
+    color: '#0a3617',
+  },
+  reportStatus: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  reportStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2b964f',
+  },
+  reportMeta: {
+    fontSize: 12,
     color: '#6b7280',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  verifyValue: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  verifyValueGreen: {
-    color: '#0c4820',
-  },
-  verifyValueOrange: {
-    color: '#e65100',
-  },
-  verifyValueRed: {
-    color: '#c62828',
   },
   settingsCard: {
     backgroundColor: '#fff',
     borderRadius: 24,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    marginTop: 12,
   },
   settingsHeader: {
     flexDirection: 'row',

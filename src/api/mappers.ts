@@ -1,5 +1,6 @@
 import type { ApiVehicle } from '../api/types';
 import type { Vehicle } from '../data/vehiclesData';
+import type { VehicleTreesResponse } from './services/vehicles.service';
 
 function formatRegDate(iso?: string): string {
   if (!iso) {
@@ -31,7 +32,44 @@ function iconForVehicle(name: string, fuel: string): string {
   return 'https://img.icons8.com/color/96/suv.png';
 }
 
-export function mapApiVehicleToUi(api: ApiVehicle): Vehicle {
+export type VehicleCardStats = {
+  trees: number;
+  co2: number;
+  survival: string;
+};
+
+const EMPTY_STATS: VehicleCardStats = {
+  trees: 0,
+  co2: 0,
+  survival: '—',
+};
+
+export function statsFromVehicleTrees(
+  res: VehicleTreesResponse,
+): VehicleCardStats {
+  const list = Array.isArray(res.trees) ? res.trees : [];
+  const trees = Number(res.totalTrees) || list.length;
+  const co2 = Math.round(
+    list.reduce((sum, t) => sum + (Number(t.co2Kg) || 0), 0),
+  );
+  if (trees === 0) {
+    return { trees: 0, co2: 0, survival: '—' };
+  }
+  const alive = list.filter(t => {
+    const status = String(t.status || '').toUpperCase();
+    return status !== 'DEAD';
+  }).length;
+  return {
+    trees,
+    co2,
+    survival: `${Math.round((alive / trees) * 100)}%`,
+  };
+}
+
+export function mapApiVehicleToUi(
+  api: ApiVehicle,
+  stats: VehicleCardStats = EMPTY_STATS,
+): Vehicle {
   return {
     id: api._id,
     name: api.name,
@@ -39,9 +77,9 @@ export function mapApiVehicleToUi(api: ApiVehicle): Vehicle {
     vhId: api.vhId,
     fuel: api.fuel,
     regDate: formatRegDate(api.createdAt),
-    trees: 3,
-    co2: 45,
-    survival: '100%',
+    trees: stats.trees,
+    co2: stats.co2,
+    survival: stats.survival,
     status: 'Active',
     iconUrl: iconForVehicle(api.name, api.fuel),
   };
@@ -106,5 +144,12 @@ export function mapInsuranceListToUi(raw: unknown): Vehicle[] {
       ),
     )
     .filter((v): v is ApiVehicle => v !== null)
-    .map(mapApiVehicleToUi);
+    .map(v => mapApiVehicleToUi(v, EMPTY_STATS));
+}
+
+export function canFetchVehicleTrees(vehicleId: string): boolean {
+  if (!vehicleId) return false;
+  if (vehicleId.startsWith('insurance-')) return false;
+  // Mongo ObjectId is 24 hex chars
+  return /^[a-f\d]{24}$/i.test(vehicleId);
 }

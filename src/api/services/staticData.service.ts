@@ -1,6 +1,5 @@
 import { apiRequest } from '../client';
 import type {
-  StaticGamification,
   StaticInitiativeInfo,
   StaticMitraCard,
   StaticNewsItem,
@@ -10,10 +9,6 @@ import type {
 export const staticDataService = {
   getMitraCard() {
     return apiRequest<StaticMitraCard>('/static-data/mitra-card');
-  },
-
-  getGamification() {
-    return apiRequest<StaticGamification>('/static-data/gamification');
   },
 
   getRashiVan() {

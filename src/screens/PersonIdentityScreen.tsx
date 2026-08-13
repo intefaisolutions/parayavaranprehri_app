@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
+import QrImage from '../components/QrImage';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
@@ -25,6 +26,7 @@ import { mapApiVehicleToUi } from '../api/mappers';
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
 
 type LinkedVehicle = {
@@ -54,7 +56,10 @@ function formatJoined(value: string | Date | null | undefined) {
   });
 }
 
-export default function PersonIdentityScreen({ onBack }: Props) {
+export default function PersonIdentityScreen({
+  onBack,
+  onNotifications,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [identity, setIdentity] = useState<PersonIdentity | null>(null);
   const [displayName, setDisplayName] = useState('Citizen');
@@ -215,7 +220,7 @@ export default function PersonIdentityScreen({ onBack }: Props) {
           <Text style={styles.headerTitle}>Person Identity</Text>
           <Text style={styles.headerSubtitle}>Citizen-centric eco identity</Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <AppIcon name="bell-outline" size={20} color="#0a3617" />
         </Pressable>
       </View>
@@ -255,9 +260,12 @@ export default function PersonIdentityScreen({ onBack }: Props) {
             <Text style={styles.idName}>{displayName}</Text>
             <Text style={styles.idFieldValue}>+91 {phone}</Text>
             <Text style={styles.idMeta}>ID: {personId}</Text>
-            {identity?.qrCode ? (
-              <Text style={styles.idMeta}>QR: {identity.qrCode}</Text>
-            ) : null}
+            <View style={styles.qrWrap}>
+              <QrImage
+                data={identity?.qrCode || String(personId)}
+                size={140}
+              />
+            </View>
           </View>
         </LinearGradient>
 
@@ -344,6 +352,10 @@ const styles = StyleSheet.create({
   idName: { fontSize: 20, fontWeight: '800', color: '#111827' },
   idFieldValue: { fontSize: 14, color: '#374151', marginTop: 4 },
   idMeta: { fontSize: 12, color: '#6b7280', marginTop: 4 },
+  qrWrap: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: {
     width: '48%',

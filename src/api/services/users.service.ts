@@ -24,6 +24,8 @@ export type UpdateMePayload = {
   avatar?: string;
   district?: string;
   state?: string;
+  /** Not yet persisted by backend updateMe schema; kept for forward compat. */
+  vidhanSabha?: string;
 };
 
 export type UserQuery = {

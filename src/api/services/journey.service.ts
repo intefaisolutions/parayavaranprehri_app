@@ -21,7 +21,7 @@ export type JourneyProfileApi = {
 };
 
 export type JourneyTimeline = {
-  profile: JourneyProfileApi;
+  profile: JourneyProfileApi | null;
   achievements: JourneyAchievementApi[];
 };
 

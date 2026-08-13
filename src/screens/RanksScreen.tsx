@@ -16,15 +16,18 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
   leaderboardService,
+  unwrapList,
+  vidhanSabhasService,
   type LeaderboardEntry,
   type LeaderboardScope,
 } from '../api';
 
 const { width } = Dimensions.get('window');
 
-const CATEGORIES = ['Vidhan Sabha', 'State', 'City'];
+const CATEGORIES = ['Vidhan Sabha', 'State', 'City'] as const;
+type RankCategory = (typeof CATEGORIES)[number];
 
-const SCOPE_BY_CATEGORY: Record<string, LeaderboardScope> = {
+const SCOPE_BY_CATEGORY: Record<RankCategory, LeaderboardScope> = {
   'Vidhan Sabha': 'vidhan-sabha',
   State: 'state',
   City: 'city',
@@ -72,7 +75,7 @@ function mapEntry(
     vidhanSabha: entry.vidhanSabha || '',
     co2: Math.round(entry.co2Kg || 0),
     trees: entry.trees || 0,
-    survival: Math.min(100, Math.round((entry.points || 0) / 12)),
+    survival: Math.round(entry.survivalPct ?? 0),
     points: entry.points || 0,
     isUser,
   };
@@ -96,8 +99,17 @@ function getScoreSecondary(item: RankItem, sortBy: SortBy) {
   return `${item.trees} trees`;
 }
 
-export default function RanksScreen() {
-  const [activeCategory, setActiveCategory] = useState('Vidhan Sabha');
+type RanksScreenProps = {
+  onNotifications?: () => void;
+};
+
+export default function RanksScreen({ onNotifications }: RanksScreenProps) {
+  const [activeCategory, setActiveCategory] =
+    useState<RankCategory>('Vidhan Sabha');
+  const [selectedValue, setSelectedValue] = useState<string>('All');
+  const [vidhanOptions, setVidhanOptions] = useState<string[]>(['All']);
+  const [stateOptions, setStateOptions] = useState<string[]>(['All']);
+  const [cityOptions, setCityOptions] = useState<string[]>(['All']);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('trees');
   const [sortDrawerVisible, setSortDrawerVisible] = useState(false);
@@ -106,16 +118,82 @@ export default function RanksScreen() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const secondaryOptions =
+    activeCategory === 'Vidhan Sabha'
+      ? vidhanOptions
+      : activeCategory === 'State'
+        ? stateOptions
+        : cityOptions;
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const uniq = (values: string[]) =>
+        Array.from(
+          new Set(values.map(v => v.trim()).filter(Boolean)),
+        ).sort((a, b) => a.localeCompare(b));
+
+      let vidhans: string[] = [];
+      let states: string[] = [];
+      let cities: string[] = [];
+
+      // 1) Admin CMS list — already public on live
+      try {
+        const res = await vidhanSabhasService.list({ page: 1, limit: 200 });
+        const rows = unwrapList<Record<string, unknown>>(res as never);
+        vidhans = uniq(
+          rows.map(r =>
+            String(r.vidhanSabhaName || r.name || r.vidhanSabha || '').trim(),
+          ),
+        );
+        states = uniq(rows.map(r => String(r.state || '').trim()));
+        cities = uniq(
+          rows.map(r => String(r.district || r.city || '').trim()),
+        );
+      } catch {
+        // continue to filters fallback
+      }
+
+      // 2) Optional leaderboard facets (CMS + trees) when available
+      try {
+        const filters = await leaderboardService.filters();
+        vidhans = uniq([...(filters.vidhanSabhas || []), ...vidhans]);
+        states = uniq([...(filters.states || []), ...states]);
+        cities = uniq([...(filters.cities || []), ...cities]);
+      } catch {
+        // keep CMS results
+      }
+
+      if (!mounted) return;
+      setVidhanOptions(['All', ...vidhans]);
+      setStateOptions(['All', ...states]);
+      setCityOptions(['All', ...cities]);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       setLoading(true);
       setErrorMsg('');
-      const scope = SCOPE_BY_CATEGORY[activeCategory] || 'vidhan-sabha';
+      const scope = SCOPE_BY_CATEGORY[activeCategory];
+      const valueFilter =
+        selectedValue && selectedValue !== 'All' ? selectedValue : undefined;
+      const query = {
+        scope,
+        limit: 50,
+        vidhanSabha:
+          scope === 'vidhan-sabha' ? valueFilter : undefined,
+        state: scope === 'state' ? valueFilter : undefined,
+        city: scope === 'city' ? valueFilter : undefined,
+      };
       try {
         const [board, me] = await Promise.all([
-          leaderboardService.list({ scope, limit: 50 }),
-          leaderboardService.me({ scope }).catch(() => null),
+          leaderboardService.list(query),
+          leaderboardService.me(query).catch(() => null),
         ]);
         if (!mounted) return;
         const items = Array.isArray(board?.items) ? board.items : [];
@@ -138,7 +216,9 @@ export default function RanksScreen() {
             ),
           ),
         );
-        setMyStanding(me ? mapEntry(me, Math.max(0, (me.rank || 1) - 1), true) : null);
+        setMyStanding(
+          me ? mapEntry(me, Math.max(0, (me.rank || 1) - 1), true) : null,
+        );
       } catch (error) {
         if (mounted) {
           setRankData([]);
@@ -156,10 +236,11 @@ export default function RanksScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeCategory]);
+  }, [activeCategory, selectedValue]);
 
-  const handleCategoryChange = (cat: string) => {
+  const handleCategoryChange = (cat: RankCategory) => {
     setActiveCategory(cat);
+    setSelectedValue('All');
   };
 
   const handleSortSelect = (option: SortBy) => {
@@ -187,6 +268,9 @@ export default function RanksScreen() {
       ? filteredData.findIndex(d => d.isUser) + 1
       : null);
 
+  const standingScopeLabel =
+    selectedValue !== 'All' ? selectedValue : activeCategory;
+
   return (
     <View style={styles.root}>
       {/* HEADER */}
@@ -195,7 +279,7 @@ export default function RanksScreen() {
           <Text style={styles.headerTitle}>Vidhan Sabha Leaderboard</Text>
           <Text style={styles.headerSubtitle}>Constituency-wise eco contributors</Text>
         </View>
-        <Pressable style={styles.bellButton}>
+        <Pressable style={styles.bellButton} onPress={onNotifications}>
           <AppIcon name="bell-outline" size={20} color="#0a3617" />
         </Pressable>
       </View>
@@ -215,7 +299,7 @@ export default function RanksScreen() {
           <Text style={styles.standingLabel}>Your standing</Text>
           <Text style={styles.standingTitle}>
             Among{' '}
-            <Text style={styles.highlightText}>{activeCategory}</Text> owners,
+            <Text style={styles.highlightText}>{standingScopeLabel}</Text> owners,
             your rank is{' '}
             <Text style={styles.highlightText}>
               #{userRank ?? '?'}
@@ -242,7 +326,7 @@ export default function RanksScreen() {
         <View style={styles.filtersContainer}>
           {/* CATEGORIES (Row 1) */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {CATEGORIES.map((cat) => (
+            {CATEGORIES.map(cat => (
               <Pressable
                 key={cat}
                 style={[styles.filterPill, activeCategory === cat && styles.filterPillActiveCategory]}
@@ -251,6 +335,37 @@ export default function RanksScreen() {
                 <Text style={[styles.filterPillText, activeCategory === cat && styles.filterPillTextActive]}>{cat}</Text>
               </Pressable>
             ))}
+          </ScrollView>
+
+          {/* SECONDARY VALUE CHIPS (Rau / Depalpur / MP / …) */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScrollSecondary}
+          >
+            {secondaryOptions.map(option => {
+              const active = selectedValue === option;
+              return (
+                <Pressable
+                  key={`${activeCategory}-${option}`}
+                  style={[
+                    styles.filterPill,
+                    styles.filterPillLight,
+                    active && styles.filterPillActiveModel,
+                  ]}
+                  onPress={() => setSelectedValue(option)}
+                >
+                  <Text
+                    style={[
+                      styles.filterPillText,
+                      active && styles.filterPillTextActive,
+                    ]}
+                  >
+                    {option}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
 
           {/* SEARCH & SORT */}
@@ -499,6 +614,11 @@ const styles = StyleSheet.create({
   filterScroll: {
     paddingHorizontal: 20,
     paddingBottom: 12,
+    gap: 8,
+  },
+  filterScrollSecondary: {
+    paddingHorizontal: 20,
+    paddingBottom: 4,
     gap: 8,
   },
   filterPill: {

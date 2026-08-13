@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,9 +13,14 @@ import {
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
-import AppIcon, { IconName } from '../components/AppIcon';
+import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, greenSelfiesService, uploadsService } from '../api';
+import {
+  ApiError,
+  greenSelfiesService,
+  uploadsService,
+  type GreenSelfieItem,
+} from '../api';
 
 type Props = {
   onBack: () => void;
@@ -27,6 +32,17 @@ const CATEGORIES = [
   'Mission 2047',
   'Paryavaran Mitra',
 ];
+
+function formatDate(value?: string) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 async function ensureCameraPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
@@ -47,6 +63,23 @@ export default function GreenSelfieScreen({ onBack }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [selfies, setSelfies] = useState<GreenSelfieItem[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+
+  const loadSelfies = useCallback(async () => {
+    try {
+      const list = await greenSelfiesService.list();
+      setSelfies(Array.isArray(list) ? list : []);
+    } catch {
+      setSelfies([]);
+    } finally {
+      setLoadingList(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSelfies();
+  }, [loadSelfies]);
 
   const uploadAndSave = async (uri: string, type?: string, name?: string) => {
     setSubmitting(true);
@@ -64,8 +97,6 @@ export default function GreenSelfieScreen({ onBack }: Props) {
         );
         if (uploaded?.url) imageUrl = uploaded.url;
       } catch {
-        // If S3 upload fails, still try create with local/file uri may fail —
-        // surface upload error clearly
         throw new ApiError(0, 'Image upload failed. Check network / S3 config.');
       }
 
@@ -74,6 +105,7 @@ export default function GreenSelfieScreen({ onBack }: Props) {
         imageUrl,
       });
       setStatusMsg('Green selfie saved successfully.');
+      await loadSelfies();
     } catch (error) {
       setStatusMsg(
         error instanceof ApiError
@@ -210,6 +242,36 @@ export default function GreenSelfieScreen({ onBack }: Props) {
         {statusMsg ? (
           <Text style={styles.statusMsg}>{statusMsg}</Text>
         ) : null}
+
+        <Text style={[styles.sectionLabel, styles.historyLabel]}>
+          My selfies
+        </Text>
+        {loadingList ? (
+          <ActivityIndicator color="#136e35" style={{ marginTop: 8 }} />
+        ) : selfies.length === 0 ? (
+          <Text style={styles.emptyHistory}>No selfies yet.</Text>
+        ) : (
+          selfies.map(item => (
+            <View key={item._id} style={styles.historyRow}>
+              {item.imageUrl ? (
+                <Image
+                  source={{ uri: item.imageUrl }}
+                  style={styles.historyThumb}
+                />
+              ) : (
+                <View style={[styles.historyThumb, styles.historyThumbEmpty]}>
+                  <AppIcon name="camera-outline" size={18} color="#6b7280" />
+                </View>
+              )}
+              <View style={styles.historyInfo}>
+                <Text style={styles.historyCategory}>{item.category}</Text>
+                <Text style={styles.historyDate}>
+                  {formatDate(item.createdAt)}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -256,6 +318,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 10,
   },
+  historyLabel: { marginTop: 28 },
   categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   categoryChip: {
     paddingHorizontal: 14,
@@ -291,4 +354,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  emptyHistory: { color: '#6b7280', fontSize: 13 },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 10,
+    gap: 12,
+  },
+  historyThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#e8eee9',
+  },
+  historyThumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyInfo: { flex: 1 },
+  historyCategory: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0a3617',
+  },
+  historyDate: { fontSize: 12, color: '#6b7280', marginTop: 4 },
 });

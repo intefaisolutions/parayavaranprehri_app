@@ -60,6 +60,8 @@ export type PersonStats = {
   vidhanSabha: string | null;
   linkedVehicles: number;
   treesAssigned: number;
+  aliveTrees?: number;
+  survivalPct?: number;
   co2OffsetKg: number;
   joinedAt: string | Date | null;
 };

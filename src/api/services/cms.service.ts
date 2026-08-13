@@ -18,23 +18,6 @@ export const mapsService = {
   },
 };
 
-export const locationsService = {
-  list(
-    params: {
-      page?: number;
-      limit?: number;
-      locationType?: string;
-      status?: string;
-    } = {},
-  ) {
-    return apiRequest(`/locations${toQueryString(params)}`);
-  },
-
-  getById(id: string) {
-    return apiRequest(`/locations/${id}`);
-  },
-};
-
 export const notificationsService = {
   list(
     params: {
@@ -49,6 +32,41 @@ export const notificationsService = {
 
   getById(id: string) {
     return apiRequest(`/notifications/${id}`);
+  },
+
+  getInbox(limit = 50) {
+    return apiRequest<{
+      items: Array<{
+        _id: string;
+        notificationTitle: string;
+        message: string;
+        notificationType?: string;
+        targetAudience?: string;
+        status: string;
+        sentAt?: string | null;
+        createdAt?: string;
+        isRead: boolean;
+      }>;
+      unreadCount: number;
+    }>(`/notifications/inbox${toQueryString({ limit })}`);
+  },
+
+  getUnreadCount() {
+    return apiRequest<{ unreadCount: number }>(
+      '/notifications/inbox/unread-count',
+    );
+  },
+
+  markRead(id: string) {
+    return apiRequest<{ ok: true }>(`/notifications/inbox/${id}/read`, {
+      method: 'PATCH',
+    });
+  },
+
+  markAllRead() {
+    return apiRequest<{ marked: number }>('/notifications/inbox/read-all', {
+      method: 'PATCH',
+    });
   },
 };
 
@@ -66,6 +84,30 @@ export const reportsService = {
 
   getById(id: string) {
     return apiRequest(`/reports/${id}`);
+  },
+
+  monthlyPlantations(
+    params: {
+      months?: number;
+      vidhanSabha?: string;
+      mitraId?: string;
+    } = {},
+  ) {
+    return apiRequest<{
+      months: Array<{
+        key: string;
+        label: string;
+        year: number;
+        month: number;
+        count: number;
+        alive: number;
+        dead: number;
+        heightPct: number;
+      }>;
+      total: number;
+      from: string;
+      to: string;
+    }>(`/reports/monthly-plantations${toQueryString(params)}`);
   },
 };
 
@@ -103,6 +145,8 @@ export const vidhanSabhasService = {
       status?: string;
     } = {},
   ) {
-    return apiRequest(`/vidhan-sabhas${toQueryString(params)}`);
+    return apiRequest(`/vidhan-sabhas${toQueryString(params)}`, {
+      auth: false,
+    });
   },
 };

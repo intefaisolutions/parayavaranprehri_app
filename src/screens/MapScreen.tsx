@@ -1,27 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Dimensions,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
+import MapView, {
+  Marker,
+  PROVIDER_GOOGLE,
+  type Region,
+} from 'react-native-maps';
 import AppIcon, { IconName } from '../components/AppIcon';
-import { MAP_TREES, MapTree, MapTreeType } from '../data/mapTreesData';
+import { MapTreeType } from '../data/mapTreesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
+import { getCurrentCoords } from '../utils/deviceLocation';
 import {
   ApiError,
+  getStoredPhone,
+  getStoredUser,
   mapsService,
   treesService,
   unwrapList,
+  usersService,
   type ApiTree,
 } from '../api';
 
-const { width } = Dimensions.get('window');
-
 const FILTERS = ['All', 'Peepal', 'Neem', 'Banyan', 'Mango'];
+
+const DEFAULT_REGION: Region = {
+  latitude: 22.7196,
+  longitude: 75.8577,
+  latitudeDelta: 0.12,
+  longitudeDelta: 0.12,
+};
 
 type MapSite = {
   id: string;
@@ -30,6 +43,14 @@ type MapSite = {
   plantationArea?: string;
   latitude?: number;
   longitude?: number;
+};
+
+type TreePin = {
+  id: string;
+  type: MapTreeType;
+  latitude: number;
+  longitude: number;
+  title: string;
 };
 
 const TREE_STYLE: Record<
@@ -66,8 +87,8 @@ const TREE_STYLE: Record<
   },
 };
 
-const PIN_SIZE = 52;
-const PIN_INNER = 34;
+const PIN_SIZE = 44;
+const PIN_INNER = 28;
 
 function normalizeTreeType(species?: string, treeName?: string): MapTreeType {
   const value = `${species ?? ''} ${treeName ?? ''}`.toLowerCase();
@@ -77,40 +98,28 @@ function normalizeTreeType(species?: string, treeName?: string): MapTreeType {
   return 'Peepal';
 }
 
-function mapApiTreesToPins(trees: ApiTree[]): MapTree[] {
-  const withCoords = trees.filter(
-    t => typeof t.latitude === 'number' && typeof t.longitude === 'number',
-  );
-  if (withCoords.length === 0) {
-    return trees.slice(0, MAP_TREES.length).map((tree, index) => ({
-      id: index + 1,
-      type: normalizeTreeType(tree.species, tree.treeName),
-      top: MAP_TREES[index % MAP_TREES.length].top,
-      left: MAP_TREES[index % MAP_TREES.length].left,
-      zIndex: MAP_TREES[index % MAP_TREES.length].zIndex,
-    }));
-  }
+function toCoord(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
-  const lats = withCoords.map(t => t.latitude as number);
-  const lngs = withCoords.map(t => t.longitude as number);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const latSpan = Math.max(maxLat - minLat, 0.0001);
-  const lngSpan = Math.max(maxLng - minLng, 0.0001);
-
-  return withCoords.map((tree, index) => {
-    const lat = tree.latitude as number;
-    const lng = tree.longitude as number;
-    return {
-      id: index + 1,
-      type: normalizeTreeType(tree.species, tree.treeName),
-      top: 100 + ((maxLat - lat) / latSpan) * 360,
-      left: 20 + ((lng - minLng) / lngSpan) * (width - 80),
-      zIndex: 2,
-    };
+/** Only trees with real lat/lng — no decorative / fake pin fallback. */
+function mapApiTreesToPins(trees: ApiTree[]): TreePin[] {
+  const pins: TreePin[] = [];
+  trees.forEach((tree, index) => {
+    const latitude = toCoord(tree.latitude);
+    const longitude = toCoord(tree.longitude);
+    if (latitude == null || longitude == null) return;
+    const type = normalizeTreeType(tree.species, tree.treeName);
+    pins.push({
+      id: String(tree._id || tree.treeId || `tree-${index}`),
+      type,
+      latitude,
+      longitude,
+      title: tree.treeName || tree.species || type,
+    });
   });
+  return pins;
 }
 
 function TreeMapPin({ type }: { type: MapTreeType }) {
@@ -120,7 +129,7 @@ function TreeMapPin({ type }: { type: MapTreeType }) {
     <View style={[styles.pinShadow, { shadowColor: style.glow }]}>
       <View style={[styles.pinHead, { backgroundColor: style.pinColor }]}>
         <View style={[styles.pinInner, { backgroundColor: style.innerBg }]}>
-          <AppIcon name={style.icon} size={18} color={style.iconColor} />
+          <AppIcon name={style.icon} size={16} color={style.iconColor} />
         </View>
       </View>
       <View style={[styles.pinPoint, { borderTopColor: style.pinColor }]} />
@@ -128,11 +137,68 @@ function TreeMapPin({ type }: { type: MapTreeType }) {
   );
 }
 
-export default function MapScreen() {
+function flattenUserTrees(payload: unknown): ApiTree[] {
+  if (!Array.isArray(payload)) return [];
+  if (
+    payload.length > 0 &&
+    payload[0] &&
+    typeof payload[0] === 'object' &&
+    !Array.isArray((payload[0] as { trees?: unknown }).trees)
+  ) {
+    const first = payload[0] as Record<string, unknown>;
+    if (first.treeName || first.species || first.treeId || first._id) {
+      return payload as ApiTree[];
+    }
+  }
+  return payload.flatMap((group: unknown) => {
+    if (!group || typeof group !== 'object') return [];
+    const trees = (group as { trees?: unknown }).trees;
+    return Array.isArray(trees) ? (trees as ApiTree[]) : [];
+  });
+}
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, '');
+}
+
+function regionForPins(pins: TreePin[]): Region {
+  if (pins.length === 0) return DEFAULT_REGION;
+  if (pins.length === 1) {
+    return {
+      latitude: pins[0].latitude,
+      longitude: pins[0].longitude,
+      latitudeDelta: 0.04,
+      longitudeDelta: 0.04,
+    };
+  }
+  const lats = pins.map(p => p.latitude);
+  const lngs = pins.map(p => p.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const latDelta = Math.max((maxLat - minLat) * 1.6, 0.03);
+  const lngDelta = Math.max((maxLng - minLng) * 1.6, 0.03);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: latDelta,
+    longitudeDelta: lngDelta,
+  };
+}
+
+type MapScreenProps = {
+  onNotifications?: () => void;
+};
+
+export default function MapScreen({ onNotifications }: MapScreenProps) {
+  const mapRef = useRef<MapView | null>(null);
   const [activeFilter, setActiveFilter] = useState('All');
-  const [trees, setTrees] = useState<MapTree[]>([]);
+  const [trees, setTrees] = useState<TreePin[]>([]);
   const [sites, setSites] = useState<MapSite[]>([]);
   const [sourceLabel, setSourceLabel] = useState('Loading map data…');
+  const [mapsEnabled, setMapsEnabled] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -140,16 +206,33 @@ export default function MapScreen() {
       let treeCount = 0;
       let siteCount = 0;
       let pinCount = 0;
+      let pins: TreePin[] = [];
 
       try {
-        const apiTrees = await treesService.list();
-        if (mounted && Array.isArray(apiTrees) && apiTrees.length > 0) {
-          const pins = mapApiTreesToPins(apiTrees);
-          setTrees(pins);
+        const [storedPhone, user, me] = await Promise.all([
+          getStoredPhone(),
+          getStoredUser(),
+          usersService.getMe().catch(() => null),
+        ]);
+        const rawPhone =
+          storedPhone ||
+          (me as { phone?: string } | null)?.phone ||
+          user?.phone ||
+          '';
+        const phone = digitsOnly(String(rawPhone)).slice(-10);
+
+        if (phone.length === 10) {
+          const grouped = await treesService.listByMobile(phone);
+          const apiTrees = flattenUserTrees(grouped);
           treeCount = apiTrees.length;
+          pins = mapApiTreesToPins(apiTrees);
           pinCount = pins.length;
+          if (mounted) setTrees(pins);
+        } else if (mounted) {
+          setTrees([]);
         }
       } catch (error) {
+        if (mounted) setTrees([]);
         if (__DEV__) {
           console.warn(
             error instanceof ApiError ? error.message : 'Failed to load trees',
@@ -159,10 +242,8 @@ export default function MapScreen() {
 
       try {
         const mapsConfig = await mapsService.getConfig();
-        if (__DEV__ && mapsConfig?.enabled) {
-          console.log(
-            'Google Maps key available via /maps/config (native tiles not wired yet)',
-          );
+        if (mounted) {
+          setMapsEnabled(Boolean(mapsConfig?.enabled));
         }
       } catch {
         // optional maps provider config
@@ -186,25 +267,6 @@ export default function MapScreen() {
           }));
           setSites(mapped);
           siteCount = mapped.length;
-
-          // If trees had no coords, place pins from map sites
-          const withCoords = mapped.filter(
-            s =>
-              typeof s.latitude === 'number' &&
-              typeof s.longitude === 'number',
-          );
-          if (withCoords.length > 0 && treeCount === 0) {
-            const siteTrees: ApiTree[] = withCoords.map((s, i) => ({
-              _id: s.id,
-              treeName: s.locationName,
-              species: 'Peepal',
-              latitude: s.latitude,
-              longitude: s.longitude,
-            })) as ApiTree[];
-            const pins = mapApiTreesToPins(siteTrees);
-            setTrees(pins);
-            pinCount = pins.length;
-          }
         }
       } catch (error) {
         if (__DEV__) {
@@ -215,14 +277,22 @@ export default function MapScreen() {
       }
 
       if (mounted) {
-        if (siteCount === 0 && pinCount === 0) {
-          setSourceLabel('No plantation sites or trees found');
+        if (pinCount === 0) {
+          const noCoordsHint =
+            treeCount > 0
+              ? ` · ${treeCount} tree${treeCount === 1 ? '' : 's'} without GPS`
+              : '';
+          setSourceLabel(
+            siteCount > 0
+              ? `No mapped trees yet${noCoordsHint} · ${siteCount} plantation site${siteCount === 1 ? '' : 's'}`
+              : `No mapped trees yet${noCoordsHint}`,
+          );
         } else if (siteCount > 0) {
           setSourceLabel(
-            `${siteCount} plantation site${siteCount === 1 ? '' : 's'} · ${pinCount} pins`,
+            `Your trees: ${pinCount} · ${siteCount} plantation site${siteCount === 1 ? '' : 's'}`,
           );
         } else {
-          setSourceLabel(`${pinCount} trees across Indore Vidhan Sabhas`);
+          setSourceLabel(`Your trees: ${pinCount}`);
         }
       }
     })();
@@ -231,9 +301,38 @@ export default function MapScreen() {
     };
   }, []);
 
-  const filteredTrees = trees.filter(
-    tree => activeFilter === 'All' || tree.type === activeFilter,
+  const filteredTrees = useMemo(
+    () =>
+      trees.filter(
+        tree => activeFilter === 'All' || tree.type === activeFilter,
+      ),
+    [trees, activeFilter],
   );
+
+  useEffect(() => {
+    if (!mapReady || filteredTrees.length === 0) return;
+    const region = regionForPins(filteredTrees);
+    mapRef.current?.animateToRegion(region, 400);
+  }, [mapReady, filteredTrees]);
+
+  const recenterOnUser = async () => {
+    const coords = await getCurrentCoords();
+    if (!coords) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        latitudeDelta: 0.04,
+        longitudeDelta: 0.04,
+      },
+      400,
+    );
+  };
+
+  const fitTrees = () => {
+    if (filteredTrees.length === 0) return;
+    mapRef.current?.animateToRegion(regionForPins(filteredTrees), 400);
+  };
 
   return (
     <View style={styles.root}>
@@ -242,7 +341,7 @@ export default function MapScreen() {
           <Text style={styles.headerTitle}>Plantation Map</Text>
           <Text style={styles.headerSubtitle}>{sourceLabel}</Text>
         </View>
-        <Pressable style={styles.bellButton}>
+        <Pressable style={styles.bellButton} onPress={onNotifications}>
           <AppIcon name="bell-outline" size={20} color="#0a3617" />
         </Pressable>
       </View>
@@ -252,30 +351,48 @@ export default function MapScreen() {
         contentContainerStyle={{ paddingBottom: getBottomInset(100) }}
         showsVerticalScrollIndicator={false}>
         <View style={styles.mapArea}>
-          <LinearGradient
-            colors={['#eef9f0', '#f7fcf4', '#eef9f0']}
+          <MapView
+            ref={mapRef}
             style={StyleSheet.absoluteFill}
-          />
-
-          <View style={styles.gridOverlay}>
-            {Array.from({ length: 12 }).map((_, i) => (
-              <View
-                key={`v-${i}`}
-                style={[styles.gridLineVertical, { left: (width / 11) * i }]}
-              />
+            provider={PROVIDER_GOOGLE}
+            initialRegion={DEFAULT_REGION}
+            showsUserLocation
+            showsMyLocationButton={false}
+            onMapReady={() => setMapReady(true)}>
+            {filteredTrees.map(tree => (
+              <Marker
+                key={tree.id}
+                coordinate={{
+                  latitude: tree.latitude,
+                  longitude: tree.longitude,
+                }}
+                title={tree.title}
+                description={tree.type}
+                tracksViewChanges={Platform.OS === 'ios'}>
+                <TreeMapPin type={tree.type} />
+              </Marker>
             ))}
-            {Array.from({ length: 20 }).map((_, i) => (
-              <View
-                key={`h-${i}`}
-                style={[styles.gridLineHorizontal, { top: 52 * i }]}
-              />
-            ))}
-          </View>
+          </MapView>
 
-          <View style={styles.riverCurve1} />
-          <View style={styles.riverCurve2} />
+          {!mapsEnabled ? (
+            <View style={styles.configBanner} pointerEvents="none">
+              <Text style={styles.configBannerText}>
+                Google Maps key missing — set GOOGLE_MAPS_API_KEY in backend
+                .env and android/gradle.properties, then rebuild
+              </Text>
+            </View>
+          ) : null}
 
-          <View style={styles.mapContentOverlay}>
+          {filteredTrees.length === 0 ? (
+            <View style={styles.emptyOverlay} pointerEvents="none">
+              <Text style={styles.emptyTitle}>No tree pins yet</Text>
+              <Text style={styles.emptySubtitle}>
+                Pins appear only for your trees that have GPS coordinates
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.mapContentOverlay} pointerEvents="box-none">
             <View style={styles.filtersContainer}>
               <ScrollView
                 horizontal
@@ -302,42 +419,15 @@ export default function MapScreen() {
             </View>
 
             <View style={styles.mapActionsContainer}>
-              <Pressable style={styles.mapActionButton}>
+              <Pressable style={styles.mapActionButton} onPress={fitTrees}>
                 <AppIcon name="layers-outline" size={20} color="#374151" />
               </Pressable>
-              <Pressable style={styles.mapActionButton}>
-                <AppIcon name="filter-variant" size={20} color="#374151" />
-              </Pressable>
-              <Pressable style={styles.mapActionButton}>
+              <Pressable
+                style={styles.mapActionButton}
+                onPress={recenterOnUser}>
                 <AppIcon name="crosshairs-gps" size={20} color="#374151" />
               </Pressable>
             </View>
-
-            <View
-              style={[
-                styles.userLocationMarker,
-                { top: 318, left: width / 2 - 28 },
-              ]}>
-              <View style={styles.userLocationPulse} />
-              <View style={styles.userLocationRing}>
-                <AppIcon name="crosshairs-gps" size={18} color="#fff" />
-              </View>
-            </View>
-
-            {filteredTrees.map(tree => (
-              <View
-                key={tree.id}
-                style={[
-                  styles.treeMarkerContainer,
-                  {
-                    top: tree.top,
-                    left: tree.left,
-                    zIndex: tree.zIndex ?? 1,
-                  },
-                ]}>
-                <TreeMapPin type={tree.type} />
-              </View>
-            ))}
           </View>
         </View>
 
@@ -420,48 +510,44 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     overflow: 'hidden',
     position: 'relative',
-  },
-  gridOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  gridLineVertical: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-  },
-  gridLineHorizontal: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-  },
-  riverCurve1: {
-    position: 'absolute',
-    width: width * 1.4,
-    height: 180,
-    borderTopWidth: 3,
-    borderTopColor: 'rgba(34, 197, 94, 0.22)',
-    borderRadius: 280,
-    top: 220,
-    left: -80,
-    transform: [{ rotate: '-8deg' }],
-  },
-  riverCurve2: {
-    position: 'absolute',
-    width: width * 1.4,
-    height: 220,
-    borderTopWidth: 3,
-    borderTopColor: 'rgba(34, 197, 94, 0.18)',
-    borderRadius: 320,
-    top: 420,
-    left: -60,
-    transform: [{ rotate: '12deg' }],
+    backgroundColor: '#e8eee9',
   },
   mapContentOverlay: {
     ...StyleSheet.absoluteFillObject,
+  },
+  configBanner: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  configBannerText: {
+    color: '#f8fafc',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    backgroundColor: 'rgba(248, 250, 249, 0.35)',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0a3617',
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#4b5563',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   filtersContainer: {
     marginTop: 16,
@@ -515,52 +601,18 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  userLocationMarker: {
-    position: 'absolute',
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-  },
-  userLocationPulse: {
-    position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(56, 189, 248, 0.18)',
-  },
-  userLocationRing: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#0ea5e9',
-    borderWidth: 3,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0ea5e9',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  treeMarkerContainer: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
   pinShadow: {
     alignItems: 'center',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowRadius: 8,
+    elevation: 6,
   },
   pinHead: {
     width: PIN_SIZE,
     height: PIN_SIZE,
     borderRadius: PIN_SIZE / 2,
-    borderWidth: 3.5,
+    borderWidth: 3,
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -577,12 +629,12 @@ const styles = StyleSheet.create({
     height: 0,
     backgroundColor: 'transparent',
     borderStyle: 'solid',
-    borderLeftWidth: 9,
-    borderRightWidth: 9,
-    borderTopWidth: 14,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 12,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    marginTop: -10,
+    marginTop: -8,
   },
   sitesSection: {
     paddingHorizontal: 20,

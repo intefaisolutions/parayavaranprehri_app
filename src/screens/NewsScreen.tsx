@@ -9,36 +9,12 @@ import {
 } from 'react-native';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { NewsItem, TAG_STYLES, NewsTag } from '../data/newsData';
-import {
-  ApiError,
-  newsService,
-  staticDataService,
-  unwrapList,
-  type NewsItemApi,
-  type StaticNewsItem,
-} from '../api';
+import { ApiError, newsService, unwrapList, type NewsItemApi } from '../api';
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
-
-function mapStaticNews(items: StaticNewsItem[]): NewsItem[] {
-  const tags: NewsTag[] = [
-    'Mission 2047',
-    'Plantation',
-    'Government',
-    'Environment',
-    'Media',
-  ];
-  return items.map((item, index) => ({
-    id: String(item.id),
-    icon: '🌱',
-    tag: tags[index % tags.length],
-    timeAgo: item.date,
-    title: item.title,
-    description: item.content,
-  }));
-}
 
 function mapApiNews(items: NewsItemApi[]): NewsItem[] {
   const tagMap: Record<string, NewsTag> = {
@@ -46,6 +22,7 @@ function mapApiNews(items: NewsItemApi[]): NewsItem[] {
     Events: 'Mission 2047',
     Government: 'Government',
     Awareness: 'Media',
+    Plantation: 'Plantation',
   };
   return items.map(item => ({
     id: item._id,
@@ -61,7 +38,7 @@ function mapApiNews(items: NewsItemApi[]): NewsItem[] {
   }));
 }
 
-export default function NewsScreen({ onBack }: Props) {
+export default function NewsScreen({ onBack, onNotifications }: Props) {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -76,38 +53,16 @@ export default function NewsScreen({ onBack }: Props) {
           status: 'Published',
         });
         const list = unwrapList(real);
-        if (mounted && list.length > 0) {
-          setItems(mapApiNews(list));
-          return;
-        }
-        const data = await staticDataService.getNews();
-        if (mounted && Array.isArray(data) && data.length > 0) {
-          setItems(mapStaticNews(data));
-        } else if (mounted) {
-          setItems([]);
+        if (mounted) {
+          setItems(list.length > 0 ? mapApiNews(list) : []);
+          setErrorMsg('');
         }
       } catch (error) {
-        try {
-          const data = await staticDataService.getNews();
-          if (mounted && Array.isArray(data) && data.length > 0) {
-            setItems(mapStaticNews(data));
-          } else if (mounted) {
-            setErrorMsg(
-              error instanceof ApiError
-                ? error.message
-                : 'Failed to load news',
-            );
-            setItems([]);
-          }
-        } catch {
-          if (mounted) {
-            setErrorMsg(
-              error instanceof ApiError
-                ? error.message
-                : 'Failed to load news',
-            );
-            setItems([]);
-          }
+        if (mounted) {
+          setErrorMsg(
+            error instanceof ApiError ? error.message : 'Failed to load news',
+          );
+          setItems([]);
         }
       } finally {
         if (mounted) setLoading(false);
@@ -130,7 +85,7 @@ export default function NewsScreen({ onBack }: Props) {
             Environmental & mission coverage
           </Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>

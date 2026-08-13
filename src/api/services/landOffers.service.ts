@@ -1,27 +1,42 @@
 import { apiRequest } from '../client';
 import type { CreateLandOfferPayload } from '../types';
 
+export type LandOfferItem = {
+  _id: string;
+  fullName?: string;
+  address: string;
+  landSize: string;
+  availableArea?: string;
+  status?: string;
+  createdAt?: string;
+};
+
 export const landOffersService = {
   create(payload: CreateLandOfferPayload) {
-    return apiRequest('/land-offers', { method: 'POST', body: payload });
+    return apiRequest<LandOfferItem>('/land-offers', {
+      method: 'POST',
+      body: payload,
+    });
   },
 
   list() {
-    return apiRequest('/land-offers');
+    return apiRequest<LandOfferItem[]>('/land-offers');
   },
 
   getById(id: string) {
-    return apiRequest(`/land-offers/${id}`);
+    return apiRequest<LandOfferItem>(`/land-offers/${id}`);
   },
 
   update(id: string, payload: Partial<CreateLandOfferPayload>) {
-    return apiRequest(`/land-offers/${id}`, {
+    return apiRequest<LandOfferItem>(`/land-offers/${id}`, {
       method: 'PATCH',
       body: payload,
     });
   },
 
   remove(id: string) {
-    return apiRequest(`/land-offers/${id}`, { method: 'DELETE' });
+    return apiRequest<LandOfferItem>(`/land-offers/${id}`, {
+      method: 'DELETE',
+    });
   },
 };

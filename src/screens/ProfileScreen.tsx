@@ -4,6 +4,7 @@ import {
   Alert,
   Dimensions,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -15,20 +16,26 @@ import {
 import { launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
-import { computeProfileStats, Vehicle } from '../data/vehiclesData';
+import { Vehicle } from '../data/vehiclesData';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
+  callCenterService,
   getAccessToken,
   getRefreshToken,
   getStoredPhone,
   getStoredUser,
   geoService,
+  leaderboardService,
+  missionProgressService,
   notificationsService,
+  personsService,
   saveSession,
+  staticDataService,
   unwrapList,
   uploadsService,
   usersService,
   type AuthUser,
+  type ConstituencyItem,
 } from '../api';
 import { getCurrentCoords } from '../utils/deviceLocation';
 
@@ -41,6 +48,8 @@ interface ProfileScreenProps {
   onVehicleIdentity?: () => void;
   onRashiVan?: () => void;
   onAdminPreview?: () => void;
+  onNotifications?: () => void;
+  onCommunity?: () => void;
 }
 
 function initialsFromName(name: string) {
@@ -50,6 +59,26 @@ function initialsFromName(name: string) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+function digitsForTel(value: string) {
+  return value.replace(/[^\d+]/g, '');
+}
+
+function digitsForWa(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
+}
+
+function constituencyLabel(item: ConstituencyItem) {
+  return (
+    item.vidhanSabhaName ||
+    item.name ||
+    item.id ||
+    item._id ||
+    'Constituency'
+  );
+}
+
 export default function ProfileScreen({
   vehicles,
   onLogout,
@@ -57,11 +86,17 @@ export default function ProfileScreen({
   onVehicleIdentity,
   onRashiVan,
   onAdminPreview,
+  onNotifications,
+  onCommunity,
 }: ProfileScreenProps) {
-  const stats = computeProfileStats(vehicles);
+  const [stats, setStats] = useState({
+    vehicleCount: vehicles.length,
+    totalTrees: 0,
+    totalCo2: 0,
+  });
   const [name, setName] = useState('Citizen');
   const [phone, setPhone] = useState('');
-  const [location, setLocation] = useState('Indore, Madhya Pradesh');
+  const [location, setLocation] = useState('—');
   const [avatar, setAvatar] = useState<string | undefined>();
   const [notifCount, setNotifCount] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
@@ -75,6 +110,14 @@ export default function ProfileScreen({
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [vidhanSabha, setVidhanSabha] = useState('');
+  const [constituencies, setConstituencies] = useState<ConstituencyItem[]>([]);
+  const [loadingConstituencies, setLoadingConstituencies] = useState(false);
+  const [communityTitle, setCommunityTitle] = useState('Eco Circle');
+  const [communitySubtitle, setCommunitySubtitle] = useState(
+    'Loading contributors…',
+  );
+  const [sosPhone, setSosPhone] = useState('');
+  const [sosWhatsapp, setSosWhatsapp] = useState('');
 
   const applyUser = (user: Partial<AuthUser> & Record<string, unknown>) => {
     const fn = String(user.firstName || '');
@@ -119,8 +162,89 @@ export default function ProfileScreen({
         // keep stored profile
       }
       try {
-        const notifs = await notificationsService.list({ page: 1, limit: 20 });
-        if (mounted) setNotifCount(unwrapList(notifs as any).length);
+        const personStats = await personsService.getMyStats();
+        let sabha = '';
+        if (mounted && personStats) {
+          setStats({
+            vehicleCount:
+              Number(personStats.linkedVehicles) || vehicles.length,
+            totalTrees: Number(personStats.treesAssigned) || 0,
+            totalCo2: Math.round(Number(personStats.co2OffsetKg) || 0),
+          });
+          sabha = String(personStats.vidhanSabha || '');
+          if (sabha) {
+            setVidhanSabha(sabha);
+            setCommunityTitle(`${sabha} Eco Circle`);
+            setLocation(sabha);
+          }
+        }
+        const [boardMe, mission] = await Promise.all([
+          leaderboardService.me({ scope: 'vidhan-sabha', limit: 50 }).catch(
+            () => null,
+          ),
+          missionProgressService.get().catch(() => null),
+        ]);
+        if (mounted) {
+          const area = boardMe?.vidhanSabha || sabha;
+          const participants = Number(boardMe?.totalParticipants) || 0;
+          const year = Number(mission?.targetYear) || new Date().getFullYear();
+          if (area) setCommunityTitle(`${area} Eco Circle`);
+          setCommunitySubtitle(
+            participants > 0
+              ? `${participants.toLocaleString('en-IN')} contributors · Mission ${year}`
+              : `Mission ${year} · Open ranks`,
+          );
+        }
+      } catch {
+        if (mounted) {
+          setStats(prev => ({ ...prev, vehicleCount: vehicles.length }));
+          setCommunitySubtitle('Open ranks to see your circle');
+        } 
+      }
+      try {
+        let phoneContact = '';
+        try {
+          const info = await staticDataService.getInitiativeInfo();
+          phoneContact =
+            info?.support?.prahri?.phone || info?.support?.phone || '';
+        } catch {
+          // fall through to call-center
+        }
+        try {
+          const contacts = await callCenterService.list({
+            page: 1,
+            limit: 50,
+            status: 'Active',
+          });
+          const list = unwrapList(contacts as any) as Array<{
+            contactType?: string;
+            contactValue?: string;
+            assignedPerson?: string;
+          }>;
+          const pick = (type: string) => {
+            const typed = list.filter(
+              c =>
+                (c.contactType || '').toLowerCase() === type.toLowerCase(),
+            );
+            const prahri = typed.find(c =>
+              (c.assignedPerson || '').toLowerCase().includes('prahri'),
+            );
+            return prahri?.contactValue || typed[0]?.contactValue || '';
+          };
+          phoneContact = pick('Phone') || phoneContact;
+        } catch {
+          // keep initiative-info contacts
+        }
+        if (mounted) {
+          setSosPhone(phoneContact);
+          setSosWhatsapp('+918817678133');
+        }
+      } catch {
+        // leave empty
+      }
+      try {
+        const unread = await notificationsService.getUnreadCount();
+        if (mounted) setNotifCount(Number(unread.unreadCount) || 0);
       } catch {
         // permission may block
       }
@@ -130,6 +254,49 @@ export default function ProfileScreen({
     };
   }, []);
 
+  useEffect(() => {
+    const state = stateName.trim();
+    const dist = district.trim();
+    if (!state || !dist || !editOpen) {
+      setConstituencies([]);
+      return;
+    }
+    let mounted = true;
+    setLoadingConstituencies(true);
+    (async () => {
+      try {
+        const list = await geoService.listConstituencies({
+          state,
+          district: dist,
+        });
+        if (mounted) setConstituencies(Array.isArray(list) ? list : []);
+      } catch {
+        if (mounted) setConstituencies([]);
+      } finally {
+        if (mounted) setLoadingConstituencies(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [stateName, district, editOpen]);
+
+  const openCallSos = () => {
+    if (!sosPhone) {
+      Alert.alert('Call SOS', 'No helpline number configured yet.');
+      return;
+    }
+    void Linking.openURL(`tel:${digitsForTel(sosPhone)}`);
+  };
+
+  const openWhatsAppSupport = () => {
+    if (!sosWhatsapp) {
+      Alert.alert('WhatsApp', 'No WhatsApp support number configured yet.');
+      return;
+    }
+    const digits = digitsForWa(sosWhatsapp);
+    void Linking.openURL(`https://wa.me/${digits}`);
+  };
   const detectLocation = async () => {
     if (detectingLocation) return;
     setDetectingLocation(true);
@@ -218,8 +385,16 @@ export default function ProfileScreen({
         district: district.trim() || undefined,
         state: stateName.trim() || undefined,
         avatar: avatarUrl.trim() || '',
+        ...(vidhanSabha.trim()
+          ? { vidhanSabha: vidhanSabha.trim() }
+          : {}),
       })) as AuthUser & Record<string, unknown>;
       applyUser(updated);
+      if (vidhanSabha.trim()) {
+        setVidhanSabha(vidhanSabha.trim());
+        setCommunityTitle(`${vidhanSabha.trim()} Eco Circle`);
+        setLocation(vidhanSabha.trim());
+      }
       const [accessToken, refreshToken, stored] = await Promise.all([
         getAccessToken(),
         getRefreshToken(),
@@ -262,7 +437,7 @@ export default function ProfileScreen({
           <Pressable style={styles.bellButton} onPress={() => setEditOpen(true)}>
             <AppIcon name="pencil-outline" size={18} color="#0a3617" />
           </Pressable>
-          <Pressable style={styles.bellButton}>
+          <Pressable style={styles.bellButton} onPress={onNotifications}>
             <AppIcon name="bell-outline" size={20} color="#0a3617" />
             {notifCount > 0 ? (
               <View style={styles.notifDot}>
@@ -359,15 +534,13 @@ export default function ProfileScreen({
         {/* COMMUNITY SECTION */}
         <View style={styles.communitySection}>
           <Text style={styles.sectionTitle}>Community</Text>
-          <Pressable style={styles.communityCard}>
+          <Pressable style={styles.communityCard} onPress={onCommunity}>
             <View style={styles.communityIconCircle}>
               <AppIcon name="account-group" size={28} color="#126e35" />
             </View>
             <View style={styles.communityDetails}>
-              <Text style={styles.communityTitle}>Indore Eco Circle</Text>
-              <Text style={styles.communitySubtitle}>
-                142 nearby contributors · Mission 2047
-              </Text>
+              <Text style={styles.communityTitle}>{communityTitle}</Text>
+              <Text style={styles.communitySubtitle}>{communitySubtitle}</Text>
             </View>
             <Text style={styles.chevronIcon}>›</Text>
           </Pressable>
@@ -377,24 +550,30 @@ export default function ProfileScreen({
         <View style={styles.supportSection}>
           <Text style={styles.sectionTitle}>Support</Text>
           <View style={styles.supportGrid}>
-            {/* WhatsApp */}
-            <Pressable style={styles.supportCard}>
+            <Pressable style={styles.supportCard} onPress={openWhatsAppSupport}>
               <AppIcon name="whatsapp" size={24} color="#126e35" style={styles.supportIcon} />
               <Text style={styles.supportTitle}>WhatsApp</Text>
-              <Text style={styles.supportSubtitle}>Chat support</Text>
+              <Text style={styles.supportSubtitle}>
+                {sosWhatsapp || '—'}
+              </Text>
             </Pressable>
 
-            {/* Call SOS */}
-            <Pressable style={styles.supportCard}>
+            <Pressable style={styles.supportCard} onPress={openCallSos}>
               <AppIcon name="phone" size={24} color="#126e35" style={styles.supportIcon} />
               <Text style={styles.supportTitle}>Call SOS</Text>
-              <Text style={styles.supportSubtitle}>1800-123-GREEN</Text>
+              <Text style={styles.supportSubtitle}>
+                {sosPhone || '—'}
+              </Text>
             </Pressable>
           </View>
         </View>
 
-        {/* SIGN OUT BUTTON */}
-        <Pressable style={styles.signOutButton} onPress={onLogout}>
+        {/* SIGN OUT BUTTON — kept above floating bottom nav */}
+        <Pressable
+          style={styles.signOutButton}
+          onPress={onLogout}
+          hitSlop={8}
+          android_ripple={{ color: '#fecdd3' }}>
           <AppIcon name="logout" size={20} color="#e11d48" />
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
@@ -404,90 +583,141 @@ export default function ProfileScreen({
       <Modal visible={editOpen} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit profile</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="First name"
-              value={firstName}
-              onChangeText={setFirstName}
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Last name"
-              value={lastName}
-              onChangeText={setLastName}
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Phone"
-              keyboardType="phone-pad"
-              value={editPhone}
-              onChangeText={setEditPhone}
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="District"
-              value={district}
-              onChangeText={setDistrict}
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="State"
-              value={stateName}
-              onChangeText={setStateName}
-            />
-            {vidhanSabha ? (
-              <Text style={styles.vidhanHint}>Vidhan Sabha: {vidhanSabha}</Text>
-            ) : null}
-            <Pressable
-              style={styles.avatarPickBtn}
-              onPress={() => void detectLocation()}
-              disabled={detectingLocation}>
-              {detectingLocation ? (
-                <ActivityIndicator color="#126e35" />
-              ) : (
-                <Text style={styles.avatarPickText}>
-                  Detect Vidhan Sabha from GPS
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>Edit profile</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="First name"
+                value={firstName}
+                onChangeText={setFirstName}
+              />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Last name"
+                value={lastName}
+                onChangeText={setLastName}
+              />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Phone"
+                keyboardType="phone-pad"
+                value={editPhone}
+                onChangeText={setEditPhone}
+              />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="District"
+                value={district}
+                onChangeText={text => {
+                  setDistrict(text);
+                  setVidhanSabha('');
+                }}
+              />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="State"
+                value={stateName}
+                onChangeText={text => {
+                  setStateName(text);
+                  setVidhanSabha('');
+                }}
+              />
+              {district.trim() && stateName.trim() ? (
+                <View style={styles.constituencyBlock}>
+                  <Text style={styles.vidhanHint}>Vidhan Sabha</Text>
+                  {loadingConstituencies ? (
+                    <ActivityIndicator color="#126e35" />
+                  ) : constituencies.length === 0 ? (
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Type vidhan sabha"
+                      value={vidhanSabha}
+                      onChangeText={setVidhanSabha}
+                    />
+                  ) : (
+                    constituencies.map(item => {
+                      const label = constituencyLabel(item);
+                      const selected = vidhanSabha === label;
+                      return (
+                        <Pressable
+                          key={String(item._id || item.id || label)}
+                          style={[
+                            styles.constituencyChip,
+                            selected && styles.constituencyChipActive,
+                          ]}
+                          onPress={() => setVidhanSabha(label)}>
+                          <Text
+                            style={[
+                              styles.constituencyChipText,
+                              selected && styles.constituencyChipTextActive,
+                            ]}>
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                  {vidhanSabha ? (
+                    <Text style={styles.vidhanHint}>Selected: {vidhanSabha}</Text>
+                  ) : null}
+                </View>
+              ) : vidhanSabha ? (
+                <Text style={styles.vidhanHint}>
+                  Vidhan Sabha: {vidhanSabha}
                 </Text>
-              )}
-            </Pressable>
-            <Pressable
-              style={styles.avatarPickBtn}
-              onPress={() => void pickAvatar()}
-              disabled={uploadingAvatar}>
-              {uploadingAvatar ? (
-                <ActivityIndicator color="#126e35" />
-              ) : (
-                <Text style={styles.avatarPickText}>
-                  {avatarUrl ? 'Change photo' : 'Pick photo from gallery'}
-                </Text>
-              )}
-            </Pressable>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Or paste avatar image URL"
-              value={avatarUrl}
-              onChangeText={setAvatarUrl}
-              autoCapitalize="none"
-            />
-            <View style={styles.modalActions}>
+              ) : null}
               <Pressable
-                style={styles.modalCancel}
-                onPress={() => setEditOpen(false)}
-                disabled={saving}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.modalSave}
-                onPress={handleSaveProfile}
-                disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
+                style={styles.avatarPickBtn}
+                onPress={() => void detectLocation()}
+                disabled={detectingLocation}>
+                {detectingLocation ? (
+                  <ActivityIndicator color="#126e35" />
                 ) : (
-                  <Text style={styles.modalSaveText}>Save</Text>
+                  <Text style={styles.avatarPickText}>
+                    Detect Vidhan Sabha from GPS
+                  </Text>
                 )}
               </Pressable>
-            </View>
+              <Pressable
+                style={styles.avatarPickBtn}
+                onPress={() => void pickAvatar()}
+                disabled={uploadingAvatar}>
+                {uploadingAvatar ? (
+                  <ActivityIndicator color="#126e35" />
+                ) : (
+                  <Text style={styles.avatarPickText}>
+                    {avatarUrl ? 'Change photo' : 'Pick photo from gallery'}
+                  </Text>
+                )}
+              </Pressable>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Or paste avatar image URL"
+                value={avatarUrl}
+                onChangeText={setAvatarUrl}
+                autoCapitalize="none"
+              />
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={styles.modalCancel}
+                  onPress={() => setEditOpen(false)}
+                  disabled={saving}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.modalSave}
+                  onPress={handleSaveProfile}
+                  disabled={saving}>
+                  {saving ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.modalSaveText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -538,6 +768,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: getBottomInset(24),
+    maxHeight: '88%',
     gap: 10,
   },
   modalTitle: {
@@ -554,6 +785,31 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#111827',
     backgroundColor: '#f9fafb',
+    marginBottom: 10,
+  },
+  constituencyBlock: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  constituencyChip: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#f9fafb',
+  },
+  constituencyChipActive: {
+    borderColor: '#136e35',
+    backgroundColor: '#e8f7ee',
+  },
+  constituencyChipText: {
+    color: '#374151',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  constituencyChipTextActive: {
+    color: '#136e35',
   },
   avatarPickBtn: {
     borderWidth: 1,
@@ -562,6 +818,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     backgroundColor: '#ecfdf5',
+    marginBottom: 10,
   },
   avatarPickText: {
     color: '#126e35',
@@ -634,7 +891,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: getBottomInset(120), // Leave space for bottom nav
+    paddingBottom: getBottomInset(160),
   },
   profileCard: {
     borderRadius: 32,
@@ -841,13 +1098,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 30,
     paddingVertical: 16,
-    marginBottom: 10,
+    marginBottom: 88,
+    zIndex: 20,
+    elevation: 4,
     gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.02,
     shadowRadius: 10,
-    elevation: 2,
   },
   signOutIcon: {
     width: 20,

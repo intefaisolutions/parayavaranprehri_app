@@ -12,6 +12,24 @@ export type PublicRashiTree = {
   careInstructions?: string;
   image?: string;
   galleryImages?: string[];
+  deity?: string;
+  nakshatras?: string[];
+  karmaBonus?: number;
+  vitalityBonus?: number;
+  harmonyBonus?: number;
+  trees?: Array<{
+    tree: string;
+    scientificName?: string;
+    localName?: string;
+    description?: string;
+    benefits?: string[];
+    deity?: string;
+    nakshatras?: string[];
+    karmaBonus?: number;
+    vitalityBonus?: number;
+    harmonyBonus?: number;
+    image?: string;
+  }>;
 };
 
 export const rashiTreesService = {

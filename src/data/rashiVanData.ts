@@ -15,17 +15,23 @@ export type RashiKey =
 export type SacredTree = {
   name: string;
   significance: string;
-  karma: number;
-  vitality: number;
-  harmony: number;
+  karma?: number;
+  vitality?: number;
+  harmony?: number;
 };
 
 export type RashiInfo = {
   key: RashiKey;
   name: string;
-  deity: string;
+  deity?: string;
   nakshatras: string[];
   trees: SacredTree[];
+};
+
+export type RevealedTree = {
+  tree: SacredTree;
+  rashi: RashiInfo;
+  nakshatra?: string;
 };
 
 export const RASHI_DATA: RashiInfo[] = [
@@ -350,12 +356,6 @@ export function getRashiFromDate(date: Date): RashiInfo {
 function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
-
-export type RevealedTree = {
-  tree: SacredTree;
-  rashi: RashiInfo;
-  nakshatra: string;
-};
 
 export function revealSacredTree(birthDate: Date): RevealedTree {
   const rashi = getRashiFromDate(birthDate);

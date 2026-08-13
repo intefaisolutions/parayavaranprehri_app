@@ -10,117 +10,26 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
-const DR_RAM_PHOTO =
-  'https://parayavaranprehri.lovable.app/__l5e/assets-v1/2dfadff4-d848-48cf-bfcf-a65dda7d2bc0/dr-ram-patidar.png';
-
-/** Matches https://parayavaranprehri.lovable.app/dashboard Initiative Leaders */
-const INITIATIVE_LEADERS = [
-  {
-    id: '1',
-    name: 'Shri Narendra Modi',
-    title: "Hon'ble Prime Minister of India",
-    quote:
-      '"Mission LiFE — Lifestyle for Environment is India\'s gift to the world."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/2386c033-50ad-4e6a-a05e-8a9a5c495676/modi.jpg',
-  },
-  {
-    id: '2',
-    name: 'Dr. Mohan Yadav',
-    title: "Hon'ble Chief Minister, Madhya Pradesh",
-    quote: '"A green Madhya Pradesh is a prosperous Madhya Pradesh."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/1a41d7b4-a156-40be-9e18-11abb2b5a581/mohan-yadav.webp',
-  },
-  {
-    id: '3',
-    name: 'IAS Manish Singh',
-    title: 'Indian Administrative Service',
-    quote: '"Governance with green vision builds tomorrow\'s India."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/371ebe86-585f-463a-aa4d-36a799e60c75/manish-singh.png',
-  },
-  {
-    id: '4',
-    name: 'Dr. Ram Patidar',
-    title: 'Environmentalist, Biodiversity Conservationist & Mission Advisor',
-    quote: '"Every tree we plant is a promise to the next generation."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri: DR_RAM_PHOTO,
-    topBadge: 'Inspiration',
-    achievements: [
-      'Environmentalist',
-      'World Record Holder',
-      'Biodiversity',
-      'Mission Advisor',
-    ],
-  },
-  {
-    id: '5',
-    name: 'Shivam Verma',
-    title: 'Collector, Indore',
-    quote: '"Every vehicle, every tree — one greener Indore."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/37e90657-3768-41c3-916b-831e696130fa/shivam-verma.jpg',
-  },
-  {
-    id: '6',
-    name: 'Siddharth Jain',
-    title: 'Jila Panchayat CEO',
-    quote: '"Civic action rooted in nature."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/c74d6f2b-179e-4a1c-ab2f-e2014e11e19e/siddharth-jain.webp',
-  },
-  {
-    id: '7',
-    name: 'Kshitij Singhal',
-    title: 'Municipal Corporation',
-    quote: '"Cleaner air begins on our streets."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/504bc0c9-58f0-4e28-82f3-5d6fb130e558/kshitij.jpg',
-  },
-  {
-    id: '8',
-    name: 'Pradeep Kumar Sharma',
-    title: 'RTO, Indore',
-    quote: '"Mobility that gives back to the planet."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/2ec278a8-8b9b-4c5d-ac59-71e6c8457c06/pradeep-sharma.webp',
-  },
-  {
-    id: '9',
-    name: 'Pushyamitra Bhargav',
-    title: 'Mayor, Indore',
-    quote: '"Pride of Indore — leaf by leaf."',
-    buttonText: '🇮🇳 Green Mission',
-    imageUri:
-      'https://parayavaranprehri.lovable.app/__l5e/assets-v1/7f73dc40-9f27-4b22-b787-28bdae61952a/pushyamitra.png',
-  },
-];
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon, { IconName } from '../components/AppIcon';
-import { computeProfileStats, Vehicle } from '../data/vehiclesData';
+import { Vehicle, computeVehicleStats } from '../data/vehiclesData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { colors } from '../theme/colors';
 import {
   getStoredUser,
+  journeyService,
   leaderboardService,
   leadersService,
   missionProgressService,
+  notificationsService,
   personsService,
   unwrapList,
   usersService,
   type Leader,
   type LeaderboardEntry,
 } from '../api';
+import { resolveMediaUrl } from '../api/mediaUrl';
 
 const { width } = Dimensions.get('window');
 
@@ -143,6 +52,7 @@ type DashboardScreenProps = {
   onOfferLand?: () => void;
   onAboutInitiative?: () => void;
   onAdminPreview?: () => void;
+  onNotifications?: () => void;
 };
 
 type LeaderCard = {
@@ -151,7 +61,7 @@ type LeaderCard = {
   title: string;
   quote: string;
   buttonText: string;
-  imageUri: string;
+  imageUri?: string;
   topBadge?: string;
   achievements?: string[];
 };
@@ -160,21 +70,21 @@ function mapApiLeaders(items: Leader[]): LeaderCard[] {
   return items
     .slice()
     .sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999))
-    .map((item, index) => {
-      const fallback = INITIATIVE_LEADERS[index];
-      const isRam = item.leaderName.toLowerCase().includes('ram patidar');
+    .map(item => {
+      const name = item.leaderName.toLowerCase();
+      const isRam = name.includes('ram patidar');
+      const isModi = name.includes('modi');
       return {
         id: item._id,
         name: item.leaderName,
         title: item.designation,
         quote: item.organization
           ? `"${item.organization}"`
-          : fallback?.quote || '"Committed to a greener Bharat."',
+          : '"Committed to a greener Bharat."',
         buttonText: '🇮🇳 Green Mission',
-        imageUri: item.photo || fallback?.imageUri || DR_RAM_PHOTO,
-        topBadge: isRam
-          ? 'Inspiration'
-          : fallback?.topBadge,
+        // Admin → Mongo `photo` (S3 permanent URL); API/app resolve to signed URL.
+        imageUri: item.photo || undefined,
+        topBadge: isModi ? 'Inspiration' : undefined,
         achievements: isRam
           ? [
               'Environmentalist',
@@ -182,9 +92,19 @@ function mapApiLeaders(items: Leader[]): LeaderCard[] {
               'Biodiversity',
               'Mission Advisor',
             ]
-          : fallback?.achievements,
+          : undefined,
       };
     });
+}
+
+async function mapApiLeadersWithMedia(items: Leader[]): Promise<LeaderCard[]> {
+  const cards = mapApiLeaders(items);
+  return Promise.all(
+    cards.map(async card => ({
+      ...card,
+      imageUri: await resolveMediaUrl(card.imageUri),
+    })),
+  );
 }
 
 export default function DashboardScreen({
@@ -200,16 +120,31 @@ export default function DashboardScreen({
   onOfferLand,
   onAboutInitiative,
   onAdminPreview,
+  onNotifications,
 }: DashboardScreenProps) {
-  const stats = computeProfileStats(vehicles);
   const [displayName, setDisplayName] = useState('Citizen');
-  const [locationLabel, setLocationLabel] = useState('Madhya Pradesh');
+  const [locationLabel, setLocationLabel] = useState('—');
   const [nameInitials, setNameInitials] = useState('PP');
-  const [leaders, setLeaders] = useState<LeaderCard[]>(INITIATIVE_LEADERS);
-  const [missionPercent, setMissionPercent] = useState(14);
-  const [missionLabel, setMissionLabel] = useState(String(new Date().getFullYear()));
+  const [leaders, setLeaders] = useState<LeaderCard[]>([]);
+  const [missionPercent, setMissionPercent] = useState(0);
+  const [missionLabel, setMissionLabel] = useState(
+    String(new Date().getFullYear()),
+  );
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [missionTargetYear, setMissionTargetYear] = useState(2047);
-  const [contributionCo2, setContributionCo2] = useState(stats.totalCo2);
+  const [contributionCo2, setContributionCo2] = useState(0);
+  const [inspirationName, setInspirationName] = useState('Dr. Ram Patidar');
+  const [inspirationPhoto, setInspirationPhoto] = useState<string | undefined>();
+  const [inspirationTitle, setInspirationTitle] = useState(
+    'Environmentalist · Biodiversity Conservationist · Social Reformer',
+  );
+  const [quickStats, setQuickStats] = useState({
+    vehicleCount: vehicles.length,
+    totalTrees: 0,
+    totalCo2: 0,
+    netZeroProgress: 0,
+    avgSurvival: 0,
+  });
   const [topContributors, setTopContributors] = useState<LeaderboardEntry[]>([]);
   const [leaderboardTitle, setLeaderboardTitle] = useState(
     'Top Eco Contributors',
@@ -233,82 +168,138 @@ export default function DashboardScreen({
         const loc = [user.district, user.state].filter(Boolean).join(', ');
         if (loc) setLocationLabel(loc);
       }
-      try {
-        const me = (await usersService.getMe()) as Record<string, unknown>;
-        if (mounted && me) {
-          const full = `${me.firstName || ''} ${me.lastName || ''}`.trim();
-          if (full) {
-            setDisplayName(full);
-            const parts = full.split(/\s+/);
-            setNameInitials(
-              parts.length >= 2
-                ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-                : full.slice(0, 2).toUpperCase(),
-            );
-          }
-          const loc = [me.district, me.state].filter(Boolean).join(', ');
-          if (loc) setLocationLabel(String(loc));
+
+      const [meRes, statsRes, progressRes, boardRes, leadersRes, journeyRes, unreadRes] =
+        await Promise.allSettled([
+          usersService.getMe(),
+          personsService.getMyStats(),
+          missionProgressService.get(),
+          leaderboardService.list({ scope: 'vidhan-sabha', limit: 3 }),
+          leadersService.list({ page: 1, limit: 50, isActive: true }),
+          journeyService.getTimeline(),
+          notificationsService.getUnreadCount(),
+        ]);
+
+      if (!mounted) return;
+
+      if (meRes.status === 'fulfilled' && meRes.value) {
+        const me = meRes.value as Record<string, unknown>;
+        const full = `${me.firstName || ''} ${me.lastName || ''}`.trim();
+        if (full) {
+          setDisplayName(full);
+          const parts = full.split(/\s+/);
+          setNameInitials(
+            parts.length >= 2
+              ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+              : full.slice(0, 2).toUpperCase(),
+          );
         }
-      } catch {
-        // keep stored profile
+        const loc = [me.district, me.state].filter(Boolean).join(', ');
+        if (loc) setLocationLabel(String(loc));
       }
-      try {
-        const personStats = await personsService.getMyStats();
-        if (mounted && personStats) {
-          if (typeof personStats.co2OffsetKg === 'number') {
-            setContributionCo2(Math.round(personStats.co2OffsetKg));
-          }
-          if (personStats.vidhanSabha) {
-            setLocationLabel(personStats.vidhanSabha);
-            setLeaderboardTitle(
-              `Top Eco Contributors · ${personStats.vidhanSabha}`,
-            );
-          } else if (personStats.address) {
-            setLocationLabel(personStats.address);
-          }
-        }
-      } catch {
-        // person profile may not exist yet
-      }
-      try {
-        const progress = await missionProgressService.get();
-        if (mounted && progress) {
-          setMissionPercent(Number(progress.percent) || 0);
-          if (progress.label) setMissionLabel(progress.label);
-          if (progress.targetYear) setMissionTargetYear(progress.targetYear);
-        }
-      } catch {
-        // keep default mission progress
-      }
-      try {
-        const board = await leaderboardService.list({
-          scope: 'vidhan-sabha',
-          limit: 3,
+
+      if (statsRes.status === 'fulfilled' && statsRes.value) {
+        const personStats = statsRes.value;
+        const trees = Number(personStats.treesAssigned) || 0;
+        const linked = Number(personStats.linkedVehicles) || vehicles.length;
+        const co2 = Math.round(Number(personStats.co2OffsetKg) || 0);
+        const survival =
+          typeof personStats.survivalPct === 'number'
+            ? Math.round(personStats.survivalPct)
+            : computeVehicleStats(vehicles).avgSurvival;
+        setContributionCo2(co2);
+        setQuickStats({
+          vehicleCount: linked,
+          totalTrees: trees,
+          totalCo2: co2,
+          avgSurvival: survival,
+          netZeroProgress: 0,
         });
-        if (mounted && Array.isArray(board?.items)) {
-          setTopContributors(board.items.slice(0, 3));
+        if (personStats.vidhanSabha) {
+          setLocationLabel(personStats.vidhanSabha);
+          setLeaderboardTitle(
+            `Top Eco Contributors · ${personStats.vidhanSabha}`,
+          );
+        } else if (personStats.address) {
+          setLocationLabel(personStats.address);
         }
-      } catch {
-        // keep empty / static section hidden via length check
+      } else {
+        const fromVehicles = computeVehicleStats(vehicles);
+        setQuickStats(prev => ({
+          ...prev,
+          vehicleCount: vehicles.length,
+          totalTrees: fromVehicles.totalTrees || prev.totalTrees,
+          totalCo2: fromVehicles.totalCo2 || prev.totalCo2,
+          avgSurvival: fromVehicles.avgSurvival,
+        }));
       }
-      try {
-        const res = await leadersService.list({
-          page: 1,
-          limit: 50,
-          isActive: true,
-        });
-        const list = unwrapList(res);
-        if (mounted && list.length > 0) {
-          setLeaders(mapApiLeaders(list));
+
+      if (progressRes.status === 'fulfilled' && progressRes.value) {
+        const progress = progressRes.value;
+        const pct = Number(progress.percent) || 0;
+        setMissionPercent(pct);
+        setQuickStats(prev => ({ ...prev, netZeroProgress: pct }));
+        if (progress.label) setMissionLabel(progress.label);
+        if (progress.targetYear) setMissionTargetYear(progress.targetYear);
+      }
+
+      if (boardRes.status === 'fulfilled' && Array.isArray(boardRes.value?.items)) {
+        setTopContributors(boardRes.value.items.slice(0, 3));
+      }
+
+      let foundInspirationPhoto: string | undefined;
+      if (leadersRes.status === 'fulfilled') {
+        const list = unwrapList(leadersRes.value);
+        setLeaders(list.length > 0 ? await mapApiLeadersWithMedia(list) : []);
+        const ram = list.find(l =>
+          l.leaderName.toLowerCase().includes('ram patidar'),
+        );
+        if (ram) {
+          setInspirationName(ram.leaderName);
+          if (ram.designation) setInspirationTitle(ram.designation);
+          foundInspirationPhoto = await resolveMediaUrl(ram.photo);
+          if (foundInspirationPhoto) setInspirationPhoto(foundInspirationPhoto);
         }
-      } catch {
-        // keep Lovable-matched fallback leaders
+      } else {
+        setLeaders([]);
+      }
+
+      if (!foundInspirationPhoto && journeyRes.status === 'fulfilled') {
+        const timeline = journeyRes.value;
+        if (timeline?.profile) {
+          if (timeline.profile.name) setInspirationName(timeline.profile.name);
+          if (timeline.profile.subtitle) {
+            setInspirationTitle(timeline.profile.subtitle);
+          }
+          const photo = await resolveMediaUrl(timeline.profile.photo);
+          if (photo) setInspirationPhoto(photo);
+        }
+      }
+
+      if (unreadRes.status === 'fulfilled') {
+        setUnreadNotifs(Number(unreadRes.value.unreadCount) || 0);
       }
     })();
     return () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const fromVehicles = computeVehicleStats(vehicles);
+    setQuickStats(prev => {
+      // Prefer person-stats survival when already loaded (>0 or trees known).
+      // Still refresh vehicleCount when fleet changes.
+      return {
+        ...prev,
+        vehicleCount: Math.max(prev.vehicleCount, fromVehicles.vehicleCount),
+        avgSurvival:
+          prev.avgSurvival > 0
+            ? prev.avgSurvival
+            : fromVehicles.avgSurvival,
+      };
+    });
+  }, [vehicles]);
 
   const quickStatIcons: IconName[] = [
     'car-side',
@@ -346,9 +337,11 @@ export default function DashboardScreen({
                 </View>
               </View>
             </View>
-            <Pressable style={styles.bellButton}>
+            <Pressable style={styles.bellButton} onPress={onNotifications}>
               <AppIcon name="bell-outline" size={20} color="#ffffff" />
-              <View style={styles.notificationDot} />
+              {unreadNotifs > 0 ? (
+                <View style={styles.notificationDot} />
+              ) : null}
             </Pressable>
           </View>
 
@@ -416,15 +409,27 @@ export default function DashboardScreen({
 
               <View style={styles.personRow}>
                 <View style={styles.personAvatar}>
-                  <Image
-                    source={{ uri: DR_RAM_PHOTO }}
-                    style={styles.personAvatarImage}
-                    resizeMode="cover"
-                  />
+                  {inspirationPhoto ? (
+                    <Image
+                      source={{ uri: inspirationPhoto }}
+                      style={styles.personAvatarImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.personAvatarInitials}>
+                      {inspirationName
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map(p => p[0])
+                        .join('')
+                        .toUpperCase() || 'RP'}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.personInfo}>
-                  <Text style={styles.personName}>Dr. Ram Patidar</Text>
-                  <Text style={styles.personDesc}>100,000+ Trees · World Records · ICAR Awardee</Text>
+                  <Text style={styles.personName}>{inspirationName}</Text>
+                  <Text style={styles.personDesc}>{inspirationTitle}</Text>
                   <View style={styles.tagsRow}>
                     <View style={styles.tagBadge}>
                       <Text style={styles.tagText}>🌱 Biodiversity</Text>
@@ -530,11 +535,23 @@ export default function DashboardScreen({
               <View style={styles.inspiredProfileRow}>
                 <View style={styles.inspiredAvatarContainer}>
                   <View style={styles.inspiredAvatar}>
-                    <Image
-                      source={{ uri: DR_RAM_PHOTO }}
-                      style={styles.inspiredAvatarImage}
-                      resizeMode="cover"
-                    />
+                    {inspirationPhoto ? (
+                      <Image
+                        source={{ uri: inspirationPhoto }}
+                        style={styles.inspiredAvatarImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={styles.inspiredAvatarInitials}>
+                        {inspirationName
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map(p => p[0])
+                          .join('')
+                          .toUpperCase() || 'RP'}
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.inspiredTrophyBadge}>
                     <Text style={styles.inspiredTrophyIcon}>🏆</Text>
@@ -542,10 +559,8 @@ export default function DashboardScreen({
                 </View>
                 
                 <View style={styles.inspiredInfo}>
-                  <Text style={styles.inspiredName}>Dr. Ram Patidar</Text>
-                  <Text style={styles.inspiredDesc}>
-                    Environmentalist · Biodiversity Conservationist · Social Reformer
-                  </Text>
+                  <Text style={styles.inspiredName}>{inspirationName}</Text>
+                  <Text style={styles.inspiredDesc}>{inspirationTitle}</Text>
                   <View style={styles.inspiredTags}>
                     {['Environmentalist', 'Biodiversity Expert', 'Farmer Innovator', 'Social Reformer', 'World Record Holder'].map((tag, i) => (
                       <View key={i} style={styles.inspiredTag}>
@@ -600,7 +615,7 @@ export default function DashboardScreen({
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
               <Text style={styles.quickStatLabel}>Vehicles Registered</Text>
-              <Text style={styles.quickStatValue}>{stats.vehicleCount}</Text>
+              <Text style={styles.quickStatValue}>{quickStats.vehicleCount}</Text>
             </View>
 
             {/* Stat Card 2 */}
@@ -617,7 +632,7 @@ export default function DashboardScreen({
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
               <Text style={styles.quickStatLabel}>Trees Assigned</Text>
-              <Text style={styles.quickStatValue}>{stats.totalTrees}</Text>
+              <Text style={styles.quickStatValue}>{quickStats.totalTrees}</Text>
             </View>
           </View>
 
@@ -636,7 +651,7 @@ export default function DashboardScreen({
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
               <Text style={styles.quickStatLabel}>CO₂ Absorbed (kg)</Text>
-              <Text style={styles.quickStatValue}>{stats.totalCo2}</Text>
+              <Text style={styles.quickStatValue}>{quickStats.totalCo2}</Text>
             </View>
 
             {/* Stat Card 4 */}
@@ -653,7 +668,7 @@ export default function DashboardScreen({
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
               <Text style={styles.quickStatLabel}>Net Zero Progress</Text>
-              <Text style={styles.quickStatValue}>{stats.netZeroProgress}%</Text>
+              <Text style={styles.quickStatValue}>{quickStats.netZeroProgress}%</Text>
             </View>
           </View>
 
@@ -672,7 +687,7 @@ export default function DashboardScreen({
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
               <Text style={styles.quickStatLabel}>Survival Rate</Text>
-              <Text style={styles.quickStatValue}>{stats.avgSurvival}%</Text>
+              <Text style={styles.quickStatValue}>{quickStats.avgSurvival}%</Text>
             </View>
 
             {/* Stat Card 6 */}
@@ -844,6 +859,7 @@ export default function DashboardScreen({
         </View>
 
         {/* INITIATIVE LEADERS */}
+        {leaders.length > 0 ? (
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Initiative Leaders</Text>
@@ -886,11 +902,24 @@ export default function DashboardScreen({
                   </View>
                 ) : null}
                 <View style={styles.leaderAvatarContainer}>
-                  <Image
-                    source={{ uri: leader.imageUri }}
-                    style={styles.leaderAvatarImage}
-                    resizeMode="cover"
-                  />
+                  {leader.imageUri ? (
+                    <Image
+                      source={{ uri: leader.imageUri }}
+                      style={styles.leaderAvatarImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.leaderAvatarImage, styles.leaderAvatarFallback]}>
+                      <Text style={styles.leaderAvatarFallbackText}>
+                        {leader.name
+                          .split(/\s+/)
+                          .slice(0, 2)
+                          .map(p => p[0])
+                          .join('')
+                          .toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.leaderName}>{leader.name}</Text>
                 <Text style={styles.leaderTitle}>{leader.title}</Text>
@@ -915,6 +944,7 @@ export default function DashboardScreen({
             ))}
           </ScrollView>
         </View>
+        ) : null}
 
         {/* FOOTER ACTION CARDS */}
         <View style={styles.footerActionsContainer}>
@@ -1189,6 +1219,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  personAvatarInitials: {
+    color: '#1a3a2a',
+    fontSize: 20,
+    fontWeight: '800',
+  },
   personEmoji: {
     fontSize: 32,
   },
@@ -1462,6 +1497,11 @@ const styles = StyleSheet.create({
   inspiredAvatarImage: {
     width: '100%',
     height: '100%',
+  },
+  inspiredAvatarInitials: {
+    color: '#1a3a2a',
+    fontSize: 28,
+    fontWeight: '800',
   },
   inspiredTrophyBadge: {
     position: 'absolute',
@@ -1865,6 +1905,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 38,
+  },
+  leaderAvatarFallback: {
+    backgroundColor: '#d1fae5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leaderAvatarFallbackText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0a3617',
   },
   leaderName: {
     fontSize: 18,

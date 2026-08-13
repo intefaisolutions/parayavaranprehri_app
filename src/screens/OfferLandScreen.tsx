@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,15 +12,27 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, landOffersService } from '../api';
+import { ApiError, landOffersService, type LandOfferItem } from '../api';
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
 
 type Step = 'form' | 'success';
 
-export default function OfferLandScreen({ onBack }: Props) {
+function formatDate(value?: string) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+export default function OfferLandScreen({ onBack, onNotifications }: Props) {
   const [step, setStep] = useState<Step>('form');
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -30,6 +42,23 @@ export default function OfferLandScreen({ onBack }: Props) {
   const [landSize, setLandSize] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [offers, setOffers] = useState<LandOfferItem[]>([]);
+  const [loadingOffers, setLoadingOffers] = useState(true);
+
+  const loadOffers = useCallback(async () => {
+    try {
+      const list = await landOffersService.list();
+      setOffers(Array.isArray(list) ? list : []);
+    } catch {
+      setOffers([]);
+    } finally {
+      setLoadingOffers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOffers();
+  }, [loadOffers]);
 
   const handleSubmit = async () => {
     if (submitting) return;
@@ -49,6 +78,7 @@ export default function OfferLandScreen({ onBack }: Props) {
         availableArea: availableArea.trim(),
         landSize: landSize.trim(),
       });
+      await loadOffers();
       setStep('success');
     } catch (error) {
       setErrorMsg(
@@ -60,6 +90,30 @@ export default function OfferLandScreen({ onBack }: Props) {
       setSubmitting(false);
     }
   };
+
+  const offersSection = (
+    <View style={styles.myOffersSection}>
+      <Text style={styles.myOffersTitle}>My offers</Text>
+      {loadingOffers ? (
+        <ActivityIndicator color="#136e35" />
+      ) : offers.length === 0 ? (
+        <Text style={styles.myOffersEmpty}>No land offers yet.</Text>
+      ) : (
+        offers.map(offer => (
+          <View key={offer._id} style={styles.offerRow}>
+            <Text style={styles.offerAddress} numberOfLines={2}>
+              {offer.address}
+            </Text>
+            <Text style={styles.offerMeta}>
+              Size: {offer.landSize}
+              {offer.status ? ` · ${offer.status}` : ''}
+            </Text>
+            <Text style={styles.offerDate}>{formatDate(offer.createdAt)}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.root}>
@@ -73,7 +127,7 @@ export default function OfferLandScreen({ onBack }: Props) {
             Donate land or available area for trees
           </Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>
@@ -181,10 +235,17 @@ export default function OfferLandScreen({ onBack }: Props) {
                 <Text style={styles.errorText}>{errorMsg}</Text>
               ) : null}
             </View>
+
+            {offersSection}
           </ScrollView>
         </KeyboardAvoidingView>
       ) : (
-        <View style={styles.successContainer}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.successContainer,
+            { paddingBottom: getBottomInset(32) },
+          ]}
+          showsVerticalScrollIndicator={false}>
           <View style={styles.successCard}>
             <View style={styles.successIconCircle}>
               <Text style={styles.successCheck}>✓</Text>
@@ -194,7 +255,8 @@ export default function OfferLandScreen({ onBack }: Props) {
               Our green officer will contact you within 48 hours.
             </Text>
           </View>
-        </View>
+          {offersSection}
+        </ScrollView>
       )}
     </View>
   );
@@ -358,11 +420,45 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
   },
+  myOffersSection: {
+    marginTop: 24,
+  },
+  myOffersTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0a3617',
+    marginBottom: 12,
+  },
+  myOffersEmpty: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  offerRow: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+  },
+  offerAddress: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0a3617',
+  },
+  offerMeta: {
+    fontSize: 12,
+    color: '#374151',
+    marginTop: 4,
+  },
+  offerDate: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
   successContainer: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingBottom: getBottomInset(32),
+    paddingTop: 24,
   },
   successCard: {
     backgroundColor: '#fff',

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Image,
@@ -20,10 +21,13 @@ import {
   ApiError,
   certificatesService,
   fieldIssuesService,
+  getStoredMitraId,
   leaderboardService,
   maintenanceLogsService,
   mitraEventsService,
   mitrasService,
+  notificationsService,
+  reportsService,
   tasksService,
   treesService,
   unwrapList,
@@ -35,6 +39,7 @@ const { width } = Dimensions.get('window');
 
 type Props = {
   onLogout: () => void;
+  onNotifications?: () => void;
 };
 
 const TABS = ['Overview', 'Tasks', 'Maintenance', 'Issues', 'Events', 'Leaderboard', 'Certificates'];
@@ -52,6 +57,12 @@ function mapTaskStatus(status?: string) {
   return 'pending';
 }
 
+function taskProgressFromStatus(status?: string) {
+  if (status === 'Completed') return 100;
+  if (status === 'In Progress') return 50;
+  return 0;
+}
+
 function mapApiTasks(items: TaskItem[]) {
   return items.map((item, index) => ({
     id: index + 1,
@@ -63,8 +74,7 @@ function mapApiTasks(items: TaskItem[]) {
     due: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 10) : '',
     priority: item.priority || 'Medium',
     ...priorityStyle(item.priority),
-    progress:
-      item.status === 'Completed' ? 100 : item.status === 'In Progress' ? 40 : 0,
+    progress: taskProgressFromStatus(item.status),
     status: mapTaskStatus(item.status),
   }));
 }
@@ -77,11 +87,38 @@ function mapApiTrees(apiTrees: any[]) {
     { color: '#ffedd5', textColor: '#ea580c' },
   ];
   return apiTrees.map((tree, index) => ({
-    id: tree.treeId || tree._id || `T-${index + 1}`,
+    id: tree._id || tree.treeId || `T-${index + 1}`,
+    treeCode: tree.treeId || tree._id || `T-${index + 1}`,
     name: tree.species || tree.treeName || 'Tree',
-    status: tree.status || 'Good',
+    status: String(tree.status || 'PLANTED').toUpperCase(),
+    verified: Boolean(tree.verifiedAt),
+    plantedDate: tree.plantedDate
+      ? String(tree.plantedDate)
+      : tree.createdAt
+        ? String(tree.createdAt)
+        : undefined,
     ...colors[index % colors.length],
   }));
+}
+
+function initialsFromName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return (name.trim().slice(0, 2) || 'M').toUpperCase();
+}
+
+function isTreeHealthy(status: string) {
+  return status === 'HEALTHY' || status === 'GROWING';
+}
+
+function isTreeAtRisk(status: string) {
+  return status === 'PLANTED' || status === 'DAMAGED';
+}
+
+function isTreeDead(status: string) {
+  return status === 'DEAD';
 }
 
 const ACTIVITY_TYPES = [
@@ -118,11 +155,24 @@ type LeaderboardRow = {
   title: string;
 };
 
-export default function MitraDashboardScreen({ onLogout }: Props) {
+export default function MitraDashboardScreen({
+  onLogout,
+  onNotifications,
+}: Props) {
   const [activeTab, setActiveTab] = useState('Overview');
   const [trees, setTrees] = useState<
-    { id: string; name: string; status: string; color: string; textColor: string }[]
+    {
+      id: string;
+      treeCode: string;
+      name: string;
+      status: string;
+      verified: boolean;
+      plantedDate?: string;
+      color: string;
+      textColor: string;
+    }[]
   >([]);
+  const [verifyingTree, setVerifyingTree] = useState(false);
   const [tasks, setTasks] = useState<ReturnType<typeof mapApiTasks>>([]);
   const [certificates, setCertificates] = useState<
     { id: string; title: string; subtitle: string; code?: string }[]
@@ -139,8 +189,17 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
     }[]
   >([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
-  const [mitraName, setMitraName] = useState('Goutam Yadav');
+  const [mitraName, setMitraName] = useState('Mitra');
   const [mitraCode, setMitraCode] = useState('');
+  const [mitraMobile, setMitraMobile] = useState('');
+  const [mitraProfession, setMitraProfession] = useState('Paryavaran Mitra');
+  const [mitraZone, setMitraZone] = useState('');
+  const [mitraVidhanSabha, setMitraVidhanSabha] = useState('');
+  const [mitraJoined, setMitraJoined] = useState('');
+  const [plantationMonths, setPlantationMonths] = useState<
+    Array<{ label: string; count: number; heightPct: number }>
+  >([]);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [verifyCode, setVerifyCode] = useState('');
   const [verifyResult, setVerifyResult] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -178,11 +237,28 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
       try {
         const mitra = (await mitrasService.getMe()) as any;
         if (mounted && mitra) {
-          setMitraName(mitra.name || mitraName);
+          if (mitra.name) setMitraName(String(mitra.name));
           setMitraCode(mitra.mitraId || '');
+          if (mitra.mobile) setMitraMobile(String(mitra.mobile));
+          if (mitra.profession) {
+            setMitraProfession(String(mitra.profession));
+          }
+          const zone =
+            mitra.assignedZone ||
+            [mitra.vidhanSabha, mitra.district].filter(Boolean).join(' · ') ||
+            '';
+          setMitraZone(zone);
+          if (mitra.vidhanSabha) {
+            setMitraVidhanSabha(String(mitra.vidhanSabha));
+          }
+          if (mitra.createdAt) {
+            setMitraJoined(
+              new Date(mitra.createdAt).toISOString().slice(0, 10),
+            );
+          }
         }
       } catch {
-        // keep defaults
+        setMitraName('Mitra');
       }
 
       try {
@@ -202,6 +278,32 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
         }
       } catch {
         // trees may be empty for this mitra
+      }
+
+      try {
+        const mitraId = await getStoredMitraId();
+        const monthly = await reportsService.monthlyPlantations({
+          months: 6,
+          mitraId: mitraId || undefined,
+        });
+        if (mounted && monthly?.months) {
+          setPlantationMonths(
+            monthly.months.map(m => ({
+              label: m.label,
+              count: m.count,
+              heightPct: m.heightPct,
+            })),
+          );
+        }
+      } catch {
+        // optional chart
+      }
+
+      try {
+        const unread = await notificationsService.getUnreadCount();
+        if (mounted) setUnreadNotifs(Number(unread.unreadCount) || 0);
+      } catch {
+        // optional
       }
 
       try {
@@ -275,7 +377,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
               name: entry.name || 'Mitra',
               userId: entry.badge || entry.mobile || `PM-${index + 1}`,
               verified: entry.trees || 0,
-              survival: Math.min(100, Math.round((entry.points || 0) / 12)),
+              survival: Math.round(entry.survivalPct ?? 0),
               title: entry.badge || 'Mitra',
             })),
           );
@@ -293,7 +395,9 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
     const task = tasks.find(t => t.id === taskId);
     setTasks(prev =>
       prev.map(t =>
-        t.id === taskId ? { ...t, status: 'progress', progress: 40 } : t,
+        t.id === taskId
+          ? { ...t, status: 'progress', progress: 50 }
+          : t,
       ),
     );
     if (task?.apiId) {
@@ -331,6 +435,58 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
     }
   };
 
+  const handleVerifyTree = () => {
+    if (!trees.length) {
+      Alert.alert('No trees', 'No trees available to verify yet.');
+      return;
+    }
+    const pending = trees.filter(t => !t.verified);
+    const options = (pending.length ? pending : trees).slice(0, 8);
+    Alert.alert(
+      'Verify Tree',
+      'Select a tree to mark as field-verified',
+      [
+        ...options.map(tree => ({
+          text: `${tree.name} (${tree.treeCode})`,
+          onPress: () => void confirmVerifyTree(tree.id, tree.name),
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
+  const confirmVerifyTree = async (treeId: string, treeName: string) => {
+    if (verifyingTree) return;
+    setVerifyingTree(true);
+    try {
+      const updated = await treesService.verify(treeId, {
+        status: 'HEALTHY',
+        remarks: 'Verified by Mitra via app',
+      });
+      setTrees(prev =>
+        prev.map(t =>
+          t.id === treeId
+            ? {
+                ...t,
+                verified: true,
+                status: updated.status || 'HEALTHY',
+              }
+            : t,
+        ),
+      );
+      Alert.alert('Verified', `${treeName} marked as verified.`);
+    } catch (error) {
+      Alert.alert(
+        'Verify failed',
+        error instanceof ApiError
+          ? error.message
+          : 'Could not verify tree. Please try again.',
+      );
+    } finally {
+      setVerifyingTree(false);
+    }
+  };
+
   // Maintenance Form State
   const [selectedTree, setSelectedTree] = useState('');
   const [selectedActivity, setSelectedActivity] = useState(ACTIVITY_TYPES[0]);
@@ -356,6 +512,33 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
       status?: string;
     }[]
   >([]);
+
+  const verifiedCount = trees.filter(t => t.verified).length;
+  const missingVerifyCount = Math.max(0, trees.length - verifiedCount);
+
+  const pendingTasks = tasks.filter(t => t.status === 'pending').length;
+  const completedTasks = tasks.filter(t => t.status === 'completed').length;
+  const openIssues = reportedIssues.filter(issue => {
+    const s = String(issue.status || 'Open').toLowerCase();
+    return s !== 'resolved' && s !== 'closed';
+  }).length;
+
+  const healthyCount = trees.filter(t => isTreeHealthy(t.status)).length;
+  const atRiskCount = trees.filter(t => isTreeAtRisk(t.status)).length;
+  const deadCount = trees.filter(t => isTreeDead(t.status)).length;
+  const needingWaterCount = trees.filter(
+    t => t.status === 'PLANTED' || t.status === 'GROWING',
+  ).length;
+  const attentionCount = trees.filter(t => t.status === 'DAMAGED').length;
+
+  const survivalPercent =
+    trees.length === 0
+      ? 0
+      : Math.round(((trees.length - deadCount) / trees.length) * 100);
+
+  const headerSubtitle =
+    [mitraVidhanSabha, mitraZone].filter(Boolean).join(' · ') ||
+    'Assigned area';
 
   const handleSaveLog = async () => {
     if (!selectedTree) {
@@ -495,11 +678,12 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
           </Pressable>
           <View>
             <Text style={styles.headerTitle}>Mitra Dashboard</Text>
-            <Text style={styles.headerSubtitle}>Rau · Zone A · Sector 4</Text>
+            <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
           </View>
         </View>
-        <Pressable style={styles.bellButton}>
+        <Pressable style={styles.bellButton} onPress={onNotifications}>
           <AppIcon name="bell-outline" size={20} color="#111827" />
+          {unreadNotifs > 0 ? <View style={styles.notifDot} /> : null}
         </Pressable>
       </View>
 
@@ -512,27 +696,37 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
           <View style={styles.profileCard}>
             <View style={styles.profileTopRow}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>GY</Text>
+                <Text style={styles.avatarText}>
+                  {initialsFromName(mitraName)}
+                </Text>
               </View>
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{mitraName}</Text>
-                <Text style={styles.profileRole}>Farmer</Text>
-                <Text style={styles.profileId}>PM-IND-RAU-0112</Text>
+                <Text style={styles.profileRole}>{mitraProfession}</Text>
+                <Text style={styles.profileId}>
+                  {mitraCode || 'Mitra ID pending'}
+                </Text>
               </View>
             </View>
 
             <View style={styles.profileStatsRow}>
               <View style={styles.profileStatBox}>
                 <Text style={styles.profileStatLabel}>Joined</Text>
-                <Text style={styles.profileStatValue}>2026-07-08</Text>
+                <Text style={styles.profileStatValue}>
+                  {mitraJoined || '—'}
+                </Text>
               </View>
               <View style={styles.profileStatBox}>
                 <Text style={styles.profileStatLabel}>Mobile</Text>
-                <Text style={styles.profileStatValue}>8817678132</Text>
+                <Text style={styles.profileStatValue}>
+                  {mitraMobile || '—'}
+                </Text>
               </View>
               <View style={styles.profileStatBox}>
                 <Text style={styles.profileStatLabel}>Area</Text>
-                <Text style={styles.profileStatValue}>Zone A/Sector 4</Text>
+                <Text style={styles.profileStatValue}>
+                  {mitraZone || mitraVidhanSabha || '—'}
+                </Text>
               </View>
             </View>
           </View>
@@ -544,7 +738,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
             <View style={styles.gridIconCircle}>
               <AppIcon name="leaf" size={16} color="#059669" />
             </View>
-            <Text style={styles.gridValue}>8</Text>
+            <Text style={styles.gridValue}>{trees.length}</Text>
             <Text style={styles.gridLabel}>Trees Under Care</Text>
           </View>
 
@@ -552,15 +746,15 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
             <View style={styles.gridIconCircle}>
               <AppIcon name="check-circle-outline" size={16} color="#059669" />
             </View>
-            <Text style={styles.gridValue}>0</Text>
-            <Text style={styles.gridLabel}>Verified / Month</Text>
+            <Text style={styles.gridValue}>{verifiedCount}</Text>
+            <Text style={styles.gridLabel}>Verified</Text>
           </View>
 
           <View style={styles.gridCard}>
             <View style={styles.gridIconCircle}>
               <AppIcon name="clipboard-text-outline" size={16} color="#d97706" />
             </View>
-            <Text style={styles.gridValue}>3</Text>
+            <Text style={styles.gridValue}>{pendingTasks}</Text>
             <Text style={styles.gridLabel}>Pending Tasks</Text>
           </View>
 
@@ -568,7 +762,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
             <View style={styles.gridIconCircle}>
               <AppIcon name="ribbon" size={16} color="#059669" />
             </View>
-            <Text style={styles.gridValue}>1</Text>
+            <Text style={styles.gridValue}>{completedTasks}</Text>
             <Text style={styles.gridLabel}>Completed</Text>
           </View>
 
@@ -576,7 +770,7 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
             <View style={styles.gridIconCircle}>
               <AppIcon name="file-alert-outline" size={16} color="#e11d48" />
             </View>
-            <Text style={styles.gridValue}>0</Text>
+            <Text style={styles.gridValue}>{openIssues}</Text>
             <Text style={styles.gridLabel}>Issues</Text>
           </View>
 
@@ -584,18 +778,27 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
             <View style={styles.gridIconCircle}>
               <AppIcon name="heart-pulse" size={16} color="#059669" />
             </View>
-            <Text style={styles.gridValue}>88%</Text>
+            <Text style={styles.gridValue}>{survivalPercent}%</Text>
             <Text style={styles.gridLabel}>Survival</Text>
           </View>
         </View>
 
         {/* ACTIONS ROW */}
         <View style={styles.actionsRow}>
-          <Pressable style={styles.actionItem} onPress={() => Alert.alert('Coming Soon', 'This feature is coming soon.')}>
+          <Pressable
+            style={styles.actionItem}
+            onPress={handleVerifyTree}
+            disabled={verifyingTree}>
             <View style={styles.actionCircle}>
-              <AppIcon name="camera-outline" size={24} color="#059669" />
+              {verifyingTree ? (
+                <ActivityIndicator color="#059669" />
+              ) : (
+                <AppIcon name="camera-outline" size={24} color="#059669" />
+              )}
             </View>
-            <Text style={styles.actionText}>Verify Tree</Text>
+            <Text style={styles.actionText}>
+              {verifyingTree ? 'Verifying…' : 'Verify Tree'}
+            </Text>
           </Pressable>
 
           <Pressable style={styles.actionItem} onPress={() => setActiveTab('Tasks')}>
@@ -648,19 +851,19 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
               <Text style={styles.cardSectionTitle}>Assigned Area Overview</Text>
               <View style={styles.areaGrid}>
                 <View style={styles.areaBox}>
-                  <Text style={styles.areaValue}>0</Text>
+                  <Text style={styles.areaValue}>{verifiedCount}</Text>
                   <Text style={styles.areaLabel}>Verified</Text>
                 </View>
                 <View style={styles.areaBox}>
-                  <Text style={styles.areaValue}>4</Text>
+                  <Text style={styles.areaValue}>{missingVerifyCount}</Text>
                   <Text style={styles.areaLabel}>Missing verification</Text>
                 </View>
                 <View style={styles.areaBox}>
-                  <Text style={styles.areaValue}>2</Text>
+                  <Text style={styles.areaValue}>{needingWaterCount}</Text>
                   <Text style={styles.areaLabel}>Needing watering</Text>
                 </View>
                 <View style={styles.areaBox}>
-                  <Text style={styles.areaValue}>1</Text>
+                  <Text style={styles.areaValue}>{attentionCount}</Text>
                   <Text style={styles.areaLabel}>Requiring attention</Text>
                 </View>
               </View>
@@ -672,28 +875,51 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
 
               <View style={styles.survivalRow}>
                 <View style={[styles.survivalBox, { backgroundColor: '#eefcf3' }]}>
-                  <Text style={[styles.survivalValue, { color: '#059669' }]}>5</Text>
+                  <Text style={[styles.survivalValue, { color: '#059669' }]}>
+                    {healthyCount}
+                  </Text>
                   <Text style={styles.survivalLabel}>Healthy</Text>
                 </View>
                 <View style={[styles.survivalBox, { backgroundColor: '#fffbeb' }]}>
-                  <Text style={[styles.survivalValue, { color: '#d97706' }]}>2</Text>
+                  <Text style={[styles.survivalValue, { color: '#d97706' }]}>
+                    {atRiskCount}
+                  </Text>
                   <Text style={styles.survivalLabel}>At Risk</Text>
                 </View>
                 <View style={[styles.survivalBox, { backgroundColor: '#fff1f2' }]}>
-                  <Text style={[styles.survivalValue, { color: '#e11d48' }]}>1</Text>
+                  <Text style={[styles.survivalValue, { color: '#e11d48' }]}>
+                    {deadCount}
+                  </Text>
                   <Text style={styles.survivalLabel}>Dead</Text>
                 </View>
               </View>
 
-              <Text style={styles.chartTitle}>Monthly survival trend</Text>
+              <Text style={styles.chartTitle}>
+                Monthly plantations ({plantationMonths.reduce((s, m) => s + m.count, 0)} total)
+              </Text>
               <View style={styles.chartRow}>
-                {/* Fake Bar Chart */}
-                {[40, 50, 55, 60, 65, 70].map((height, i) => (
-                  <View key={i} style={styles.barWrap}>
+                {(plantationMonths.length > 0
+                  ? plantationMonths
+                  : Array.from({ length: 6 }, () => ({
+                      label: '—',
+                      count: 0,
+                      heightPct: 8,
+                    }))
+                ).map((month, i) => (
+                  <View key={`${month.label}-${i}`} style={styles.barWrap}>
                     <LinearGradient
                       colors={['#34d399', '#059669']}
-                      style={[styles.bar, { height }]}
+                      style={[
+                        styles.bar,
+                        {
+                          height: Math.max(
+                            8,
+                            Math.round((month.heightPct / 100) * 72),
+                          ),
+                        },
+                      ]}
                     />
+                    <Text style={styles.barLabel}>{month.label}</Text>
                   </View>
                 ))}
               </View>
@@ -996,7 +1222,9 @@ export default function MitraDashboardScreen({ onLogout }: Props) {
 
                       <View style={styles.leaderboardStatsCol}>
                         <Text style={styles.leaderboardStatValue}>{user.verified} trees</Text>
-                        <Text style={styles.leaderboardStatLabel}>{user.title}</Text>
+                        <Text style={styles.leaderboardStatLabel}>
+                          {user.survival}% survival
+                        </Text>
                       </View>
 
                       <View style={styles.leaderboardBadge}>
@@ -1353,6 +1581,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  notifDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
+  },
   scrollContent: {
     paddingBottom: 120, // Extra space for BottomNav
   },
@@ -1584,18 +1821,25 @@ const styles = StyleSheet.create({
   chartRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: 80,
+    height: 96,
     gap: 8,
   },
   barWrap: {
     flex: 1,
     height: '100%',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   bar: {
     width: '100%',
     borderTopLeftRadius: 4,
     borderTopRightRadius: 4,
+  },
+  barLabel: {
+    marginTop: 4,
+    fontSize: 9,
+    color: '#6b7280',
+    fontWeight: '600',
   },
   treeList: {
     gap: 12,

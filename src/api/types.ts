@@ -44,7 +44,8 @@ export class ApiError extends Error {
 export type CreateVehiclePayload = {
   plate: string;
   name: string;
-  vhId: string;
+  /** Optional — backend allocates VH-IND-{year}-{hex} when omitted. */
+  vhId?: string;
   fuel: string;
   insuranceId?: string;
 };
@@ -73,6 +74,13 @@ export type CreateLandOfferPayload = {
 export type CreateGreenSelfiePayload = {
   category: string;
   imageUrl: string;
+};
+
+export type GreenSelfieListItem = {
+  _id: string;
+  category: string;
+  imageUrl: string;
+  createdAt?: string;
 };
 
 export type CreateMitraPayload = {
@@ -126,22 +134,6 @@ export type StaticRashiItem = {
   benefits: string;
 };
 
-export type StaticGamification = {
-  leaderboard: Array<{
-    rank: number;
-    name: string;
-    points: number;
-    level: string;
-  }>;
-  userLevel: string;
-  userPoints: number;
-  milestones: Array<{
-    title: string;
-    achieved: boolean;
-    date: string | null;
-  }>;
-};
-
 export type StaticMitraCard = {
   name: string;
   role: string;
@@ -161,7 +153,20 @@ export type StaticInitiativeInfo = {
   support: {
     email: string;
     phone: string;
+    whatsapp?: string;
     address: string;
     faq: Array<{ question: string; answer: string }>;
+    prahri?: {
+      email?: string;
+      phone?: string;
+      whatsapp?: string;
+      faq?: Array<{ question: string; answer: string }>;
+    };
+    mitra?: {
+      email?: string;
+      phone?: string;
+      whatsapp?: string;
+      faq?: Array<{ question: string; answer: string }>;
+    };
   };
 };

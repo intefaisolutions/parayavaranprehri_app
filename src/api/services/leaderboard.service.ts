@@ -8,6 +8,8 @@ export type LeaderboardEntry = {
   name: string;
   points: number;
   trees: number;
+  aliveTrees?: number;
+  survivalPct?: number;
   co2Kg: number;
   vidhanSabha?: string | null;
   badge?: string;
@@ -27,6 +29,16 @@ export type LeaderboardQuery = {
   scope?: LeaderboardScope;
   period?: LeaderboardPeriod;
   limit?: number;
+  /** Specific constituency when scope is vidhan-sabha */
+  vidhanSabha?: string;
+  city?: string;
+  state?: string;
+};
+
+export type LeaderboardFilters = {
+  vidhanSabhas: string[];
+  states: string[];
+  cities: string[];
 };
 
 export const leaderboardService = {
@@ -40,5 +52,11 @@ export const leaderboardService = {
     return apiRequest<LeaderboardEntry & { totalParticipants: number }>(
       `/leaderboard/me${toQueryString(params)}`,
     );
+  },
+
+  filters() {
+    return apiRequest<LeaderboardFilters>('/leaderboard/filters', {
+      auth: false,
+    });
   },
 };

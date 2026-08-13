@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -10,59 +10,103 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, callCenterService, staticDataService, unwrapList } from '../api';
+import {
+  ApiError,
+  callCenterService,
+  staticDataService,
+  unwrapList,
+} from '../api';
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
 
 type SupportTab = 'prahri' | 'mitra';
 
-const FAQ_ITEMS = [
-  {
-    id: '1',
-    question: 'How are trees assigned to my vehicle?',
-    answer:
-      'Trees are assigned based on your vehicle type, fuel category, and annual CO₂ footprint. Each verified vehicle receives a unique tree ID linked to your Person Identity.',
-  },
-  {
-    id: '2',
-    question: 'How is CO₂ offset calculated?',
-    answer:
-      'CO₂ offset is calculated using your vehicle fuel type, annual mileage, and emission factors approved by the district environmental board.',
-  },
-  {
-    id: '3',
-    question: 'Can I add multiple vehicles?',
-    answer: 'Yes — your Person Identity links all your vehicles.',
-  },
-];
+type FaqItem = {
+  id: string;
+  question: string;
+  answer: string;
+};
 
-export default function SupportScreen({ onBack }: Props) {
+type TabSupport = {
+  phone: string;
+  email: string;
+  whatsapp: string;
+  faq: FaqItem[];
+};
+
+const EMPTY_TAB: TabSupport = {
+  phone: '',
+  email: '',
+  whatsapp: '',
+  faq: [],
+};
+
+function digitsForWa(value: string) {
+  return value.replace(/\D/g, '');
+}
+
+function openWhatsApp(whatsapp: string) {
+  const digits = digitsForWa(whatsapp);
+  if (!digits) return;
+  Linking.openURL(`https://wa.me/${digits}`);
+}
+
+export default function SupportScreen({ onBack, onNotifications }: Props) {
   const [activeTab, setActiveTab] = useState<SupportTab>('prahri');
-  const [expandedFaq, setExpandedFaq] = useState<string | null>('3');
-  const [phone, setPhone] = useState('+911234567890');
-  const [email, setEmail] = useState('support@paryavaranprahri.in');
-  const [faqItems, setFaqItems] = useState(FAQ_ITEMS);
+  const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
+  const [prahri, setPrahri] = useState<TabSupport>(EMPTY_TAB);
+  const [mitra, setMitra] = useState<TabSupport>(EMPTY_TAB);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      let nextPrahri: TabSupport = { ...EMPTY_TAB };
+      let nextMitra: TabSupport = { ...EMPTY_TAB };
+
       try {
         const info = await staticDataService.getInitiativeInfo();
-        if (!mounted || !info?.support) return;
-        if (info.support.phone) setPhone(info.support.phone);
-        if (info.support.email) setEmail(info.support.email);
-        if (Array.isArray(info.support.faq) && info.support.faq.length > 0) {
-          setFaqItems(
-            info.support.faq.map((item, index) => ({
-              id: String(index + 1),
-              question: item.question,
-              answer: item.answer,
-            })),
-          );
-          setExpandedFaq('1');
+        if (info?.support) {
+          const sharedFaq = Array.isArray(info.support.faq)
+            ? info.support.faq.map((item, index) => ({
+                id: `shared-${index + 1}`,
+                question: item.question,
+                answer: item.answer,
+              }))
+            : [];
+
+          nextPrahri = {
+            phone: info.support.prahri?.phone || info.support.phone || '',
+            email: info.support.prahri?.email || info.support.email || '',
+            whatsapp:
+              info.support.prahri?.whatsapp ||
+              info.support.whatsapp ||
+              '+918817678133',
+            faq:
+              info.support.prahri?.faq?.map((item, index) => ({
+                id: `prahri-${index + 1}`,
+                question: item.question,
+                answer: item.answer,
+              })) || sharedFaq,
+          };
+
+          nextMitra = {
+            phone: info.support.mitra?.phone || info.support.phone || '',
+            email: info.support.mitra?.email || info.support.email || '',
+            whatsapp:
+              info.support.mitra?.whatsapp ||
+              info.support.whatsapp ||
+              '+918817678133',
+            faq:
+              info.support.mitra?.faq?.map((item, index) => ({
+                id: `mitra-${index + 1}`,
+                question: item.question,
+                answer: item.answer,
+              })) || sharedFaq,
+          };
         }
       } catch (error) {
         if (__DEV__) {
@@ -71,26 +115,53 @@ export default function SupportScreen({ onBack }: Props) {
           );
         }
       }
+
       try {
         const contacts = await callCenterService.list({
           page: 1,
-          limit: 20,
+          limit: 50,
           status: 'Active',
         });
         const list = unwrapList(contacts as any) as Array<{
           contactType?: string;
           contactValue?: string;
+          assignedPerson?: string;
         }>;
-        if (mounted && list.length > 0) {
-          const phoneContact = list.find(c => c.contactType === 'Phone');
-          const emailContact = list.find(c => c.contactType === 'Email');
-          if (phoneContact?.contactValue) setPhone(phoneContact.contactValue);
-          if (emailContact?.contactValue) setEmail(emailContact.contactValue);
-        }
+
+        const pick = (audience: 'prahri' | 'mitra' | 'any', type: string) => {
+          const typed = list.filter(
+            c => (c.contactType || '').toLowerCase() === type.toLowerCase(),
+          );
+          if (audience === 'any') return typed[0]?.contactValue;
+          const match = typed.find(c =>
+            (c.assignedPerson || '').toLowerCase().includes(audience),
+          );
+          return match?.contactValue || typed[0]?.contactValue;
+        };
+
+        const prahriPhone = pick('prahri', 'Phone');
+        const prahriEmail = pick('prahri', 'Email');
+        const mitraPhone = pick('mitra', 'Phone');
+        const mitraEmail = pick('mitra', 'Email');
+
+        if (prahriPhone) nextPrahri.phone = prahriPhone;
+        if (prahriEmail) nextPrahri.email = prahriEmail;
+        if (mitraPhone) nextMitra.phone = mitraPhone;
+        if (mitraEmail) nextMitra.email = mitraEmail;
+        // Official support WhatsApp (fixed)
+        nextPrahri.whatsapp = '+918817678133';
+        nextMitra.whatsapp = '+918817678133';
       } catch {
-        // keep static support contacts
-      } finally {
-        if (mounted) setLoading(false);
+        // CMS initiative-info contacts remain
+        nextPrahri.whatsapp = nextPrahri.whatsapp || '+918817678133';
+        nextMitra.whatsapp = nextMitra.whatsapp || '+918817678133';
+      }
+
+      if (mounted) {
+        setPrahri({ ...nextPrahri, whatsapp: '+918817678133' });
+        setMitra({ ...nextMitra, whatsapp: '+918817678133' });
+        setExpandedFaq(nextPrahri.faq[0]?.id ?? null);
+        setLoading(false);
       }
     })();
     return () => {
@@ -98,9 +169,24 @@ export default function SupportScreen({ onBack }: Props) {
     };
   }, []);
 
+  const active = activeTab === 'prahri' ? prahri : mitra;
+
+  useEffect(() => {
+    const faq = activeTab === 'prahri' ? prahri.faq : mitra.faq;
+    setExpandedFaq(faq[0]?.id ?? null);
+  }, [activeTab, prahri.faq, mitra.faq]);
+
   const toggleFaq = (id: string) => {
     setExpandedFaq(prev => (prev === id ? null : id));
   };
+
+  const tabLabel = useMemo(
+    () =>
+      activeTab === 'prahri'
+        ? 'Paryavaran Prahri Support'
+        : 'Paryavaran Mitra Support',
+    [activeTab],
+  );
 
   return (
     <View style={styles.root}>
@@ -112,7 +198,7 @@ export default function SupportScreen({ onBack }: Props) {
           <Text style={styles.headerTitle}>Support Center</Text>
           <Text style={styles.headerSubtitle}>We're here for you</Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable style={styles.headerBtn} onPress={onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>
@@ -122,107 +208,140 @@ export default function SupportScreen({ onBack }: Props) {
           <ActivityIndicator size="large" color="#136e35" />
         </View>
       ) : (
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: getBottomInset(32) },
-        ]}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.adminBadge}>
-          <Text style={styles.adminBadgeText}>Admin Configurable</Text>
-        </View>
-
-        <View style={styles.tabRow}>
-          <Pressable
-            style={styles.tabBtnWrap}
-            onPress={() => setActiveTab('prahri')}>
-            {activeTab === 'prahri' ? (
-              <LinearGradient
-                colors={['#0c4820', '#2b964f']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.tabBtnActive}>
-                <Text style={styles.tabTextActive}>Paryavaran Prahri Support</Text>
-              </LinearGradient>
-            ) : (
-              <View style={styles.tabBtnInactive}>
-                <Text style={styles.tabTextInactive}>Paryavaran Prahri Support</Text>
-              </View>
-            )}
-          </Pressable>
-          <Pressable
-            style={styles.tabBtnWrap}
-            onPress={() => setActiveTab('mitra')}>
-            {activeTab === 'mitra' ? (
-              <LinearGradient
-                colors={['#0c4820', '#2b964f']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.tabBtnActive}>
-                <Text style={styles.tabTextActive}>Paryavaran Mitra Support</Text>
-              </LinearGradient>
-            ) : (
-              <View style={styles.tabBtnInactive}>
-                <Text style={styles.tabTextInactive}>Paryavaran Mitra Support</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
-
-        <Pressable
-          style={styles.contactCard}
-          onPress={() => Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`)}>
-          <View style={[styles.contactIcon, styles.contactIconGreen]}>
-            <Text style={styles.contactIconText}>📞</Text>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: getBottomInset(32) },
+          ]}
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.adminBadge}>
+            <Text style={styles.adminBadgeText}>CMS · Call Center</Text>
           </View>
-          <View style={styles.contactInfo}>
-            <Text style={styles.contactTitle}>Call Now</Text>
-            <Text style={styles.contactSub}>{phone}</Text>
-          </View>
-        </Pressable>
 
-        <View style={styles.contactCard}>
-          <View style={[styles.contactIcon, styles.contactIconGreen]}>
-            <Text style={styles.contactIconText}>💬</Text>
-          </View>
-          <View style={styles.contactInfo}>
-            <Text style={styles.contactTitle}>WhatsApp</Text>
-            <Text style={styles.contactSub}>Chat with our team</Text>
-          </View>
-        </View>
-
-        <Pressable
-          style={styles.contactCard}
-          onPress={() => Linking.openURL(`mailto:${email}`)}>
-          <View style={[styles.contactIcon, styles.contactIconOrange]}>
-            <Text style={styles.contactIconText}>✉️</Text>
-          </View>
-          <View style={styles.contactInfo}>
-            <Text style={styles.contactTitle}>Email</Text>
-            <Text style={styles.contactSub}>{email}</Text>
-          </View>
-        </Pressable>
-
-        <Text style={styles.faqTitle}>Frequently Asked</Text>
-
-        {faqItems.map(item => {
-          const isExpanded = expandedFaq === item.id;
-          return (
+          <View style={styles.tabRow}>
             <Pressable
-              key={item.id}
-              style={styles.faqCard}
-              onPress={() => toggleFaq(item.id)}>
-              <View style={styles.faqHeader}>
-                <Text style={styles.faqQuestion}>{item.question}</Text>
-                <Text style={styles.faqChevron}>{isExpanded ? '▲' : '▼'}</Text>
-              </View>
-              {isExpanded && (
-                <Text style={styles.faqAnswer}>{item.answer}</Text>
+              style={styles.tabBtnWrap}
+              onPress={() => setActiveTab('prahri')}>
+              {activeTab === 'prahri' ? (
+                <LinearGradient
+                  colors={['#0c4820', '#2b964f']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.tabBtnActive}>
+                  <Text style={styles.tabTextActive}>
+                    Paryavaran Prahri Support
+                  </Text>
+                </LinearGradient>
+              ) : (
+                <View style={styles.tabBtnInactive}>
+                  <Text style={styles.tabTextInactive}>
+                    Paryavaran Prahri Support
+                  </Text>
+                </View>
               )}
             </Pressable>
-          );
-        })}
-      </ScrollView>
+            <Pressable
+              style={styles.tabBtnWrap}
+              onPress={() => setActiveTab('mitra')}>
+              {activeTab === 'mitra' ? (
+                <LinearGradient
+                  colors={['#0c4820', '#2b964f']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.tabBtnActive}>
+                  <Text style={styles.tabTextActive}>
+                    Paryavaran Mitra Support
+                  </Text>
+                </LinearGradient>
+              ) : (
+                <View style={styles.tabBtnInactive}>
+                  <Text style={styles.tabTextInactive}>
+                    Paryavaran Mitra Support
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+
+          <Text style={styles.tabHint}>{tabLabel}</Text>
+
+          {active.phone ? (
+            <Pressable
+              style={styles.contactCard}
+              onPress={() =>
+                Linking.openURL(`tel:${active.phone.replace(/[^\d+]/g, '')}`)
+              }>
+              <View style={[styles.contactIcon, styles.contactIconGreen]}>
+                <Text style={styles.contactIconText}>📞</Text>
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactTitle}>Call Now</Text>
+                <Text style={styles.contactSub}>{active.phone}</Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          {active.whatsapp ? (
+            <Pressable
+              style={styles.contactCard}
+              onPress={() => openWhatsApp(active.whatsapp)}>
+              <View style={[styles.contactIcon, styles.contactIconGreen]}>
+                <Text style={styles.contactIconText}>💬</Text>
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactTitle}>WhatsApp</Text>
+                <Text style={styles.contactSub}>{active.whatsapp}</Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          {active.email ? (
+            <Pressable
+              style={styles.contactCard}
+              onPress={() => Linking.openURL(`mailto:${active.email}`)}>
+              <View style={[styles.contactIcon, styles.contactIconOrange]}>
+                <Text style={styles.contactIconText}>✉️</Text>
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactTitle}>Email</Text>
+                <Text style={styles.contactSub}>{active.email}</Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          {!active.phone && !active.whatsapp && !active.email ? (
+            <Text style={styles.emptyText}>
+              No {activeTab === 'prahri' ? 'Prahri' : 'Mitra'} contacts published
+              yet.
+            </Text>
+          ) : null}
+
+          <Text style={styles.faqTitle}>Frequently Asked</Text>
+
+          {active.faq.length === 0 ? (
+            <Text style={styles.emptyText}>No FAQs published for this tab.</Text>
+          ) : (
+            active.faq.map(item => {
+              const isExpanded = expandedFaq === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  style={styles.faqCard}
+                  onPress={() => toggleFaq(item.id)}>
+                  <View style={styles.faqHeader}>
+                    <Text style={styles.faqQuestion}>{item.question}</Text>
+                    <Text style={styles.faqChevron}>
+                      {isExpanded ? '▲' : '▼'}
+                    </Text>
+                  </View>
+                  {isExpanded ? (
+                    <Text style={styles.faqAnswer}>{item.answer}</Text>
+                  ) : null}
+                </Pressable>
+              );
+            })
+          )}
+        </ScrollView>
       )}
     </View>
   );
@@ -278,139 +397,134 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   scrollContent: {
-    padding: 20,
+    padding: 16,
   },
   adminBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f27e20',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-    marginBottom: 16,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
   },
   adminBadgeText: {
-    color: '#fff',
     fontSize: 11,
     fontWeight: '700',
+    color: '#2b964f',
   },
   tabRow: {
-    flexDirection: 'row',
     gap: 10,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   tabBtnWrap: {
-    flex: 1,
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   tabBtnActive: {
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    borderRadius: 16,
   },
   tabBtnInactive: {
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    borderRadius: 16,
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#dce8df',
+    borderColor: '#e5e7eb',
+    borderRadius: 14,
   },
   tabTextActive: {
     color: '#fff',
-    fontSize: 11,
     fontWeight: '700',
-    textAlign: 'center',
+    fontSize: 13,
   },
   tabTextInactive: {
-    color: '#0a3617',
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
+    color: '#374151',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  tabHint: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginBottom: 12,
   },
   contactCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    gap: 12,
   },
   contactIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
   },
   contactIconGreen: {
-    backgroundColor: '#2b964f',
+    backgroundColor: '#e8f5e9',
   },
   contactIconOrange: {
-    backgroundColor: '#f27e20',
+    backgroundColor: '#fff3e0',
   },
   contactIconText: {
-    fontSize: 20,
+    fontSize: 18,
   },
   contactInfo: {
     flex: 1,
   },
   contactTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0a3617',
+  },
+  contactSub: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  faqTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: '#0a3617',
-    marginBottom: 2,
-  },
-  contactSub: {
-    fontSize: 13,
-    color: '#6b7280',
-  },
-  faqTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0a3617',
     marginTop: 12,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   faqCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
   },
   faqHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   faqQuestion: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#0a3617',
-    paddingRight: 12,
+    color: '#111827',
   },
   faqChevron: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#9ca3af',
   },
   faqAnswer: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 18,
+  },
+  emptyText: {
     fontSize: 13,
     color: '#6b7280',
-    lineHeight: 20,
-    marginTop: 10,
+    marginBottom: 12,
   },
 });

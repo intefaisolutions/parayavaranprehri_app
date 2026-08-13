@@ -1,158 +1,205 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Platform,
+  ActivityIndicator,
+  Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
-import { revealSacredTree, RevealedTree } from '../data/rashiVanData';
+import { RevealedTree } from '../data/rashiVanData';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
+  PublicRashiTree,
+  getStoredPhone,
+  getStoredUser,
+  rashiPlantRequestsService,
   rashiTreesService,
-  staticDataService,
-  type StaticRashiItem,
+  type RashiPlantRequestApi,
 } from '../api';
 
 type Props = {
   onBack: () => void;
+  onNotifications?: () => void;
 };
 
-const formatDate = (date: Date) => {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${day}/${year}`;
-};
+const RASHI_OPTIONS = [
+  { label: 'Mesh (Aries)', apiValue: 'Aries', key: 'mesh' },
+  { label: 'Vrishabh (Taurus)', apiValue: 'Taurus', key: 'vrishabh' },
+  { label: 'Mithun (Gemini)', apiValue: 'Gemini', key: 'mithun' },
+  { label: 'Kark (Cancer)', apiValue: 'Cancer', key: 'kark' },
+  { label: 'Singh (Leo)', apiValue: 'Leo', key: 'singh' },
+  { label: 'Kanya (Virgo)', apiValue: 'Virgo', key: 'kanya' },
+  { label: 'Tula (Libra)', apiValue: 'Libra', key: 'tula' },
+  { label: 'Vrishchik (Scorpio)', apiValue: 'Scorpio', key: 'vrishchik' },
+  { label: 'Dhanu (Sagittarius)', apiValue: 'Sagittarius', key: 'dhanu' },
+  { label: 'Makar (Capricorn)', apiValue: 'Capricorn', key: 'makar' },
+  { label: 'Kumbh (Aquarius)', apiValue: 'Aquarius', key: 'kumbh' },
+  { label: 'Meen (Pisces)', apiValue: 'Pisces', key: 'meen' },
+] as const;
 
-const formatDobApi = (date: Date) => {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${year}-${month}-${day}`;
-};
+type RashiOption = (typeof RASHI_OPTIONS)[number];
 
-const formatTime = (date: Date) => {
-  let hours = date.getHours();
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const period = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12 || 12;
-  return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
-};
-
-export default function RashiVanScreen({ onBack }: Props) {
-  const [birthDate, setBirthDate] = useState(new Date(1995, 6, 14));
-  const [birthTime, setBirthTime] = useState(new Date(1995, 6, 14, 6, 42));
-  const [birthLocation, setBirthLocation] = useState('Indore, MP');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+export default function RashiVanScreen({ onBack, onNotifications }: Props) {
+  const [selectedRashi, setSelectedRashi] = useState<RashiOption | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [revealed, setRevealed] = useState<RevealedTree | null>(null);
-  const [apiRashi, setApiRashi] = useState<StaticRashiItem[]>([]);
+  const [apiTree, setApiTree] = useState<PublicRashiTree | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [planting, setPlanting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [myRequests, setMyRequests] = useState<RashiPlantRequestApi[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+
+  const loadMyRequests = async () => {
+    try {
+      const list = await rashiPlantRequestsService.list({ mine: true });
+      setMyRequests(Array.isArray(list) ? list : []);
+    } catch {
+      setMyRequests([]);
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const data = await staticDataService.getRashiVan();
-        if (mounted && Array.isArray(data)) {
-          setApiRashi(data);
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn(
-            error instanceof ApiError
-              ? error.message
-              : 'Failed to load rashi data',
-          );
-        }
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
+    void loadMyRequests();
   }, []);
 
   const handleReveal = async () => {
     if (revealing) return;
+    if (!selectedRashi) {
+      setErrorMsg('Please select your Rashi.');
+      setRevealed(null);
+      setApiTree(null);
+      return;
+    }
+
+    setErrorMsg('');
     setRevealing(true);
-    const local = revealSacredTree(birthDate);
     try {
-      const api = await rashiTreesService.byDob(formatDobApi(birthDate));
+      const api = await rashiTreesService.byRashi(selectedRashi.apiValue);
+      const primary =
+        api.trees && api.trees.length > 0 ? api.trees[0] : undefined;
+      const significance =
+        api.description ||
+        primary?.description ||
+        (api.benefits?.length ? api.benefits.join(' · ') : '') ||
+        (primary?.benefits?.length ? primary.benefits.join(' · ') : '') ||
+        'Sacred tree aligned with your Rashi.';
+
+      const deity = api.deity || primary?.deity;
+      const nakshatras = api.nakshatras?.length
+        ? api.nakshatras
+        : primary?.nakshatras || [];
+      const karma =
+        typeof api.karmaBonus === 'number'
+          ? api.karmaBonus
+          : typeof primary?.karmaBonus === 'number'
+            ? primary.karmaBonus
+            : undefined;
+      const vitality =
+        typeof api.vitalityBonus === 'number'
+          ? api.vitalityBonus
+          : typeof primary?.vitalityBonus === 'number'
+            ? primary.vitalityBonus
+            : undefined;
+      const harmony =
+        typeof api.harmonyBonus === 'number'
+          ? api.harmonyBonus
+          : typeof primary?.harmonyBonus === 'number'
+            ? primary.harmonyBonus
+            : undefined;
+
+      setApiTree(api);
       setRevealed({
-        ...local,
+        rashi: {
+          key: selectedRashi.key,
+          name: selectedRashi.label.split(' (')[0],
+          deity,
+          nakshatras,
+          trees: [],
+        },
+        nakshatra: nakshatras[0],
         tree: {
-          ...local.tree,
-          name: api.tree || local.tree.name,
-          significance:
-            api.description ||
-            (api.benefits?.length ? api.benefits.join(' ') : local.tree.significance),
+          name: api.tree || primary?.tree || 'Sacred Tree',
+          significance,
+          karma,
+          vitality,
+          harmony,
         },
       });
-    } catch {
-      if (apiRashi.length > 0) {
-        const rashiName = local.rashi.name.toLowerCase();
-        const match =
-          apiRashi.find(item => item.rashi.toLowerCase().includes(rashiName)) ||
-          apiRashi.find(item =>
-            rashiName.includes(item.rashi.split('(')[0].trim().toLowerCase()),
-          );
-        if (match) {
-          setRevealed({
-            ...local,
-            tree: {
-              ...local.tree,
-              name: match.tree,
-              significance: match.benefits,
-            },
-          });
-          setRevealing(false);
-          return;
-        }
-      }
-      setRevealed(local);
+    } catch (error) {
+      setRevealed(null);
+      setApiTree(null);
+      setErrorMsg(
+        error instanceof ApiError
+          ? error.message
+          : 'Could not load sacred tree for this Rashi.',
+      );
     } finally {
       setRevealing(false);
     }
   };
 
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    if (event.type === 'dismissed') {
-      setShowDatePicker(false);
-      return;
-    }
-    if (selectedDate) {
-      setBirthDate(selectedDate);
-      setRevealed(null);
-    }
-    if (Platform.OS === 'ios') {
-      setShowDatePicker(false);
-    }
-  };
+  const handlePlantRequest = async () => {
+    if (planting || !revealed || !selectedRashi) return;
 
-  const handleTimeChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowTimePicker(false);
-    }
-    if (event.type === 'dismissed') {
-      setShowTimePicker(false);
-      return;
-    }
-    if (selectedDate) {
-      setBirthTime(selectedDate);
-    }
-    if (Platform.OS === 'ios') {
-      setShowTimePicker(false);
+    setPlanting(true);
+    try {
+      const [user, storedPhone] = await Promise.all([
+        getStoredUser(),
+        getStoredPhone(),
+      ]);
+      const userName = [user?.firstName, user?.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const mobile = (user?.phone || storedPhone || '').trim();
+
+      if (!userName || !mobile) {
+        Alert.alert(
+          'Login required',
+          'Please log in to the app so we can send your details with the plantation request to admin.',
+        );
+        return;
+      }
+
+      await rashiPlantRequestsService.create({
+        rashiName: selectedRashi.apiValue,
+        rashiNameHindi: apiTree?.rashiHindi,
+        recommendedTree: revealed.tree.name,
+        scientificName: apiTree?.scientificName,
+        localName: apiTree?.localName,
+        treeDescription: apiTree?.description || revealed.tree.significance,
+        benefits: apiTree?.benefits,
+        remarks: `Sacred Tree request from Rashi Van · ${selectedRashi.label}`,
+        userName,
+        mobile,
+        email: user?.email,
+        district: user?.district,
+        state: user?.state,
+        userId: user?.id,
+      });
+      Alert.alert(
+        'Request submitted',
+        `Your request to plant ${revealed.tree.name} has been sent to the admin for review.`,
+      );
+      void loadMyRequests();
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.status === 401 || error.status === 404
+            ? 'Plantation request service is not available on the server yet. Please try again after the backend is updated.'
+            : error.message
+          : 'Failed to create plantation request. Please try again.';
+      Alert.alert('Could not submit', message);
+    } finally {
+      setPlanting(false);
     }
   };
 
@@ -166,7 +213,10 @@ export default function RashiVanScreen({ onBack }: Props) {
           <Text style={styles.headerTitle}>Rashi & Nakshatra Van</Text>
           <Text style={styles.headerSubtitle}>Your sacred Vedic tree</Text>
         </View>
-        <Pressable style={styles.headerBtn}>
+        <Pressable
+          style={styles.headerBtn}
+          onPress={onNotifications}
+          disabled={!onNotifications}>
           <Text style={styles.bellIcon}>🔔</Text>
         </Pressable>
       </View>
@@ -216,66 +266,43 @@ export default function RashiVanScreen({ onBack }: Props) {
         </LinearGradient>
 
         <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Enter your birth details</Text>
+          <Text style={styles.formTitle}>Select your Rashi</Text>
           <Text style={styles.formSubtitle}>
             For Vedic Rashi + Nakshatra alignment
           </Text>
 
-          <Text style={styles.fieldLabel}>Date of birth</Text>
+          <Text style={styles.fieldLabel}>What is your Rashi?</Text>
           <Pressable
             style={styles.inputRow}
-            onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.pickerValue}>{formatDate(birthDate)}</Text>
-            <Text style={styles.inputIcon}>📅</Text>
+            onPress={() => setDropdownOpen(true)}>
+            <Text
+              style={[
+                styles.pickerValue,
+                !selectedRashi && styles.pickerPlaceholder,
+              ]}>
+              {selectedRashi ? selectedRashi.label : 'Select your Rashi'}
+            </Text>
+            <Text style={styles.inputIcon}>▼</Text>
           </Pressable>
 
-          {showDatePicker && (
-            <DateTimePicker
-              value={birthDate}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              maximumDate={new Date()}
-              onChange={handleDateChange}
-            />
-          )}
+          {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : null}
 
-          <Text style={styles.fieldLabel}>Exact time of birth</Text>
           <Pressable
-            style={styles.inputRow}
-            onPress={() => setShowTimePicker(true)}>
-            <Text style={styles.pickerValue}>{formatTime(birthTime)}</Text>
-            <Text style={styles.inputIcon}>🕐</Text>
-          </Pressable>
-
-          {showTimePicker && (
-            <DateTimePicker
-              value={birthTime}
-              mode="time"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              is24Hour={false}
-              onChange={handleTimeChange}
-            />
-          )}
-
-          <Text style={styles.fieldLabel}>Birth location (optional)</Text>
-          <View style={styles.inputRow}>
-            <Text style={styles.locationIcon}>📍</Text>
-            <TextInput
-              style={[styles.input, styles.inputWithLeftIcon]}
-              value={birthLocation}
-              onChangeText={setBirthLocation}
-              placeholder="City, State"
-              placeholderTextColor="#9ca3af"
-            />
-          </View>
-
-          <Pressable style={styles.revealBtnWrap} onPress={handleReveal}>
+            style={styles.revealBtnWrap}
+            onPress={() => void handleReveal()}
+            disabled={revealing}>
             <LinearGradient
               colors={['#0c4820', '#2b964f']}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={styles.revealBtn}>
-              <Text style={styles.revealBtnText}>✨  Reveal my sacred tree</Text>
+              {revealing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.revealBtnText}>
+                  ✨  Reveal my sacred tree
+                </Text>
+              )}
             </LinearGradient>
           </Pressable>
 
@@ -300,50 +327,151 @@ export default function RashiVanScreen({ onBack }: Props) {
                   <Text style={styles.badgeLabel}>Rashi</Text>
                   <Text style={styles.badgeValue}>{revealed.rashi.name}</Text>
                 </View>
-                <View style={[styles.badge, styles.badgeNakshatra]}>
-                  <Text style={styles.badgeIcon}>⭐</Text>
-                  <Text style={styles.badgeLabel}>Nakshatra</Text>
-                  <Text style={styles.badgeValue}>{revealed.nakshatra}</Text>
-                </View>
-                <View style={[styles.badge, styles.badgeDeity]}>
-                  <Text style={styles.badgeIcon}>🌙</Text>
-                  <Text style={styles.badgeLabel}>Deity</Text>
-                  <Text style={styles.badgeValue}>{revealed.rashi.deity}</Text>
-                </View>
+                {revealed.nakshatra ? (
+                  <View style={[styles.badge, styles.badgeNakshatra]}>
+                    <Text style={styles.badgeIcon}>⭐</Text>
+                    <Text style={styles.badgeLabel}>Nakshatra</Text>
+                    <Text style={styles.badgeValue}>{revealed.nakshatra}</Text>
+                  </View>
+                ) : null}
+                {revealed.rashi.deity ? (
+                  <View style={[styles.badge, styles.badgeDeity]}>
+                    <Text style={styles.badgeIcon}>🌙</Text>
+                    <Text style={styles.badgeLabel}>Deity</Text>
+                    <Text style={styles.badgeValue}>
+                      {revealed.rashi.deity}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.significanceBox}>
                 <Text style={styles.significanceTitle}>Spiritual significance</Text>
-                <Text style={styles.significanceText}>{revealed.tree.significance}</Text>
+                <Text style={styles.significanceText}>
+                  {revealed.tree.significance}
+                </Text>
               </View>
 
-              <View style={styles.statsRow}>
-                <View style={styles.statPill}>
-                  <Text style={styles.statText}>Karma +{revealed.tree.karma}%</Text>
+              {typeof revealed.tree.karma === 'number' ||
+              typeof revealed.tree.vitality === 'number' ||
+              typeof revealed.tree.harmony === 'number' ? (
+                <View style={styles.statsRow}>
+                  {typeof revealed.tree.karma === 'number' ? (
+                    <View style={styles.statPill}>
+                      <Text style={styles.statText}>
+                        Karma +{revealed.tree.karma}%
+                      </Text>
+                    </View>
+                  ) : null}
+                  {typeof revealed.tree.vitality === 'number' ? (
+                    <View style={styles.statPill}>
+                      <Text style={styles.statText}>
+                        Vitality +{revealed.tree.vitality}%
+                      </Text>
+                    </View>
+                  ) : null}
+                  {typeof revealed.tree.harmony === 'number' ? (
+                    <View style={styles.statPill}>
+                      <Text style={styles.statText}>
+                        Harmony +{revealed.tree.harmony}%
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <View style={styles.statPill}>
-                  <Text style={styles.statText}>Vitality +{revealed.tree.vitality}%</Text>
-                </View>
-                <View style={styles.statPill}>
-                  <Text style={styles.statText}>Harmony +{revealed.tree.harmony}%</Text>
-                </View>
-              </View>
+              ) : null}
 
-              <Pressable style={styles.plantBtnWrap}>
+              <Pressable
+                style={styles.plantBtnWrap}
+                onPress={() => void handlePlantRequest()}
+                disabled={planting}>
                 <LinearGradient
                   colors={['#0c4820', '#2b964f']}
                   start={{ x: 0, y: 0.5 }}
                   end={{ x: 1, y: 0.5 }}
                   style={styles.plantBtn}>
-                  <Text style={styles.plantBtnText}>
-                    Plant my {revealed.tree.name} 🌱
-                  </Text>
+                  {planting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.plantBtnText}>
+                      Plant my {revealed.tree.name} 🌱
+                    </Text>
+                  )}
                 </LinearGradient>
               </Pressable>
             </View>
           )}
         </View>
+
+        <View style={styles.requestsCard}>
+          <Text style={styles.requestsTitle}>My plant requests</Text>
+          {requestsLoading ? (
+            <ActivityIndicator color="#136e35" style={{ marginVertical: 12 }} />
+          ) : myRequests.length === 0 ? (
+            <Text style={styles.requestsEmpty}>
+              No requests yet. Reveal your tree and submit a plantation request.
+            </Text>
+          ) : (
+            myRequests.map(req => (
+              <View key={req._id || req.requestId} style={styles.requestRow}>
+                <View style={styles.requestTextCol}>
+                  <Text style={styles.requestTree}>{req.recommendedTree}</Text>
+                  <Text style={styles.requestMeta}>
+                    {req.rashiName}
+                    {req.createdAt
+                      ? ` · ${new Date(req.createdAt).toLocaleDateString('en-GB')}`
+                      : ''}
+                  </Text>
+                </View>
+                <View style={styles.requestStatusPill}>
+                  <Text style={styles.requestStatusText}>{req.status}</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
+
+      <Modal
+        visible={dropdownOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDropdownOpen(false)}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setDropdownOpen(false)}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>What is your Rashi?</Text>
+            <ScrollView style={styles.modalList}>
+              {RASHI_OPTIONS.map(option => {
+                const active = selectedRashi?.apiValue === option.apiValue;
+                return (
+                  <Pressable
+                    key={option.apiValue}
+                    style={[
+                      styles.modalOption,
+                      active && styles.modalOptionActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedRashi(option);
+                      setRevealed(null);
+                      setApiTree(null);
+                      setErrorMsg('');
+                      setDropdownOpen(false);
+                    }}>
+                    <Text
+                      style={[
+                        styles.modalOptionText,
+                        active && styles.modalOptionTextActive,
+                      ]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -486,6 +614,59 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 3,
   },
+  requestsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  requestsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0a3617',
+    marginBottom: 10,
+  },
+  requestsEmpty: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 18,
+  },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  requestTextCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  requestTree: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  requestMeta: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  requestStatusPill: {
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  requestStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
+    textTransform: 'capitalize',
+  },
   formTitle: {
     fontSize: 18,
     fontWeight: '800',
@@ -520,23 +701,20 @@ const styles = StyleSheet.create({
     color: '#0a3617',
     paddingVertical: 14,
   },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0a3617',
-    paddingVertical: 14,
-  },
-  inputWithLeftIcon: {
-    paddingLeft: 4,
+  pickerPlaceholder: {
+    color: '#9ca3af',
+    fontWeight: '500',
   },
   inputIcon: {
-    fontSize: 16,
+    fontSize: 12,
+    color: '#6b7280',
     marginLeft: 8,
   },
-  locationIcon: {
-    fontSize: 16,
-    marginRight: 4,
+  errorText: {
+    color: '#d32f2f',
+    fontSize: 13,
+    marginBottom: 8,
+    marginTop: -6,
   },
   revealBtnWrap: {
     borderRadius: 28,
@@ -546,6 +724,8 @@ const styles = StyleSheet.create({
   revealBtn: {
     paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   revealBtnText: {
     color: '#fff',
@@ -678,6 +858,48 @@ const styles = StyleSheet.create({
   plantBtnText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '800',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    maxHeight: '70%',
+    paddingTop: 18,
+    paddingBottom: 8,
+    overflow: 'hidden',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0a3617',
+    paddingHorizontal: 18,
+    marginBottom: 10,
+  },
+  modalList: {
+    paddingHorizontal: 10,
+  },
+  modalOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  modalOptionActive: {
+    backgroundColor: '#e6f3eb',
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  modalOptionTextActive: {
+    color: '#0a3617',
     fontWeight: '800',
   },
 });

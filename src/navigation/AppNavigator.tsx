@@ -7,15 +7,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import OtpScreen from '../screens/OtpScreen';
 import MainLayout from '../screens/MainLayout';
 import { RootStackParamList } from './types';
-import {
-  authService,
-  clearSession,
-  getAccessToken,
-  getRefreshToken,
-  getStoredPhone,
-  setTokens,
-  usersService,
-} from '../api';
+import { getAccessToken, getRefreshToken, getStoredPhone } from '../api';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -39,30 +31,9 @@ async function restoreSession(): Promise<{
     return { ok: false };
   }
 
-  // Prefer validating with a lightweight authenticated call
-  try {
-    if (access) {
-      await usersService.getMe();
-      return { ok: true, phoneNumber: phone };
-    }
-  } catch {
-    // fall through to refresh
-  }
-
-  if (!refresh) {
-    await clearSession();
-    return { ok: false };
-  }
-
-  try {
-    const tokens = await authService.refresh(refresh);
-    await setTokens(tokens.accessToken, tokens.refreshToken);
-    await usersService.getMe();
-    return { ok: true, phoneNumber: phone };
-  } catch {
-    await clearSession();
-    return { ok: false };
-  }
+  // Show UI immediately if any token exists. Access expiry is handled
+  // by the API client (401 → refresh). Do not block boot on /users/me.
+  return { ok: true, phoneNumber: phone };
 }
 
 export default function AppNavigator() {
