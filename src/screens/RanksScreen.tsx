@@ -268,6 +268,20 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
       ? filteredData.findIndex(d => d.isUser) + 1
       : null);
 
+  const standingMe =
+    myStanding || filteredData.find(d => d.isUser) || null;
+  const standingLeader = filteredData[0];
+  const myScore = standingMe ? getSortValue(standingMe, sortBy) : 0;
+  const topScore = standingLeader ? getSortValue(standingLeader, sortBy) : 0;
+  const catchUpPct =
+    topScore <= 0
+      ? 0
+      : Math.max(4, Math.min(100, Math.round((myScore / topScore) * 100)));
+  const catchUpLabel =
+    userRank === 1 || catchUpPct >= 100
+      ? 'You are rank #1'
+      : `Catch up to rank #1 · ${catchUpPct}%`;
+
   const standingScopeLabel =
     selectedValue !== 'All' ? selectedValue : activeCategory;
 
@@ -315,9 +329,9 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
             </View>
             <View style={styles.progressContainer}>
               <View style={styles.progressBarTrack}>
-                <View style={[styles.progressBarFill, { width: '80%' }]} />
+                <View style={[styles.progressBarFill, { width: `${catchUpPct}%` }]} />
               </View>
-              <Text style={styles.progressText}>Catch up to rank #1</Text>
+              <Text style={styles.progressText}>{catchUpLabel}</Text>
             </View>
           </View>
         </LinearGradient>

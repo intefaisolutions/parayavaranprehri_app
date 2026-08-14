@@ -1,4 +1,29 @@
 import { apiRequest, toQueryString } from '../client';
+import { ApiError } from '../types';
+
+const INBOX_BASES = ['/users/me/notifications', '/notifications/inbox'] as const;
+
+async function inboxRequest<T>(
+  suffix: string,
+  options?: Parameters<typeof apiRequest>[1],
+) {
+  let lastError: unknown;
+  for (const base of INBOX_BASES) {
+    try {
+      return await apiRequest<T>(`${base}${suffix}`, options);
+    } catch (error) {
+      lastError = error;
+      if (
+        error instanceof ApiError &&
+        (error.status === 403 || error.status === 404)
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
 
 export const mapsService = {
   list(params: { page?: number; limit?: number; status?: string } = {}) {
@@ -35,7 +60,7 @@ export const notificationsService = {
   },
 
   getInbox(limit = 50) {
-    return apiRequest<{
+    return inboxRequest<{
       items: Array<{
         _id: string;
         notificationTitle: string;
@@ -48,23 +73,21 @@ export const notificationsService = {
         isRead: boolean;
       }>;
       unreadCount: number;
-    }>(`/notifications/inbox${toQueryString({ limit })}`);
+    }>(toQueryString({ limit }));
   },
 
   getUnreadCount() {
-    return apiRequest<{ unreadCount: number }>(
-      '/notifications/inbox/unread-count',
-    );
+    return inboxRequest<{ unreadCount: number }>('/unread-count');
   },
 
   markRead(id: string) {
-    return apiRequest<{ ok: true }>(`/notifications/inbox/${id}/read`, {
+    return inboxRequest<{ ok: true }>(`/${id}/read`, {
       method: 'PATCH',
     });
   },
 
   markAllRead() {
-    return apiRequest<{ marked: number }>('/notifications/inbox/read-all', {
+    return inboxRequest<{ marked: number }>('/read-all', {
       method: 'PATCH',
     });
   },

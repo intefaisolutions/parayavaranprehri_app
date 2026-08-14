@@ -1,1 +1,1 @@
-export type MapTreeType = 'Peepal' | 'Neem' | 'Banyan' | 'Mango';
+export type MapTreeType = 'Peepal' | 'Neem' | 'Banyan' | 'Mango' | 'Other';

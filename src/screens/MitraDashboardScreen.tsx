@@ -6,6 +6,8 @@ import {
   Image,
   Linking,
   Modal,
+  PermissionsAndroid,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon from '../components/AppIcon';
@@ -31,16 +34,86 @@ import {
   tasksService,
   treesService,
   unwrapList,
+  uploadsService,
   type MitraEventApi,
   type TaskItem,
 } from '../api';
 
 const { width } = Dimensions.get('window');
 
-type Props = {
-  onLogout: () => void;
-  onNotifications?: () => void;
-};
+type PickedPhoto = { uri: string; name: string; type: string };
+
+async function ensureCameraPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  const granted = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.CAMERA,
+    {
+      title: 'Camera permission',
+      message: 'Allow camera to capture tree photos',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Deny',
+    },
+  );
+  return granted === PermissionsAndroid.RESULTS.GRANTED;
+}
+
+async function pickMaintenancePhoto(): Promise<PickedPhoto | null> {
+  return new Promise(resolve => {
+    Alert.alert('Photo', 'Choose image source', [
+      {
+        text: 'Camera',
+        onPress: () => {
+          void (async () => {
+            const ok = await ensureCameraPermission();
+            if (!ok) {
+              Alert.alert('Permission needed', 'Camera permission is required.');
+              resolve(null);
+              return;
+            }
+            const result = await launchCamera({
+              mediaType: 'photo',
+              quality: 0.8,
+              saveToPhotos: false,
+            });
+            const asset = result.assets?.[0];
+            if (result.didCancel || !asset?.uri) {
+              resolve(null);
+              return;
+            }
+            resolve({
+              uri: asset.uri,
+              name: asset.fileName || `maintenance-${Date.now()}.jpg`,
+              type: asset.type || 'image/jpeg',
+            });
+          })();
+        },
+      },
+      {
+        text: 'Gallery',
+        onPress: () => {
+          void (async () => {
+            const result = await launchImageLibrary({
+              mediaType: 'photo',
+              quality: 0.8,
+              selectionLimit: 1,
+            });
+            const asset = result.assets?.[0];
+            if (result.didCancel || !asset?.uri) {
+              resolve(null);
+              return;
+            }
+            resolve({
+              uri: asset.uri,
+              name: asset.fileName || `maintenance-${Date.now()}.jpg`,
+              type: asset.type || 'image/jpeg',
+            });
+          })();
+        },
+      },
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+    ]);
+  });
+}
 
 const TABS = ['Overview', 'Tasks', 'Maintenance', 'Issues', 'Events', 'Leaderboard', 'Certificates'];
 
@@ -153,6 +226,11 @@ type LeaderboardRow = {
   verified: number;
   survival: number;
   title: string;
+};
+
+type Props = {
+  onLogout: () => void;
+  onNotifications?: () => void;
 };
 
 export default function MitraDashboardScreen({
@@ -491,6 +569,9 @@ export default function MitraDashboardScreen({
   const [selectedTree, setSelectedTree] = useState('');
   const [selectedActivity, setSelectedActivity] = useState(ACTIVITY_TYPES[0]);
   const [remarks, setRemarks] = useState('');
+  const [beforePhoto, setBeforePhoto] = useState<PickedPhoto | null>(null);
+  const [afterPhoto, setAfterPhoto] = useState<PickedPhoto | null>(null);
+  const [savingLog, setSavingLog] = useState(false);
   const [recentActivities, setRecentActivities] = useState<
     { id: string; tree: string; activity: string; date: string }[]
   >([]);
@@ -502,6 +583,8 @@ export default function MitraDashboardScreen({
   const [selectedIssueType, setSelectedIssueType] = useState(ISSUE_TYPES[0]);
   const [selectedPriority, setSelectedPriority] = useState(PRIORITIES[1]);
   const [issueDesc, setIssueDesc] = useState('');
+  const [issuePhoto, setIssuePhoto] = useState<PickedPhoto | null>(null);
+  const [submittingIssue, setSubmittingIssue] = useState(false);
   const [reportedIssues, setReportedIssues] = useState<
     {
       id: string;
@@ -541,10 +624,12 @@ export default function MitraDashboardScreen({
     'Assigned area';
 
   const handleSaveLog = async () => {
+    if (savingLog) return;
     if (!selectedTree) {
       Alert.alert('Required', 'Select a tree first.');
       return;
     }
+    setSavingLog(true);
     const optimistic = {
       id: Date.now().toString(),
       tree: selectedTree,
@@ -553,13 +638,24 @@ export default function MitraDashboardScreen({
     };
     setRecentActivities([optimistic, ...recentActivities]);
     const note = remarks;
+    const before = beforePhoto;
+    const after = afterPhoto;
     setRemarks('');
     try {
+      const photoUrls: string[] = [];
+      for (const file of [before, after]) {
+        if (!file) continue;
+        const uploaded = await uploadsService.upload(file, 'trees');
+        if (uploaded?.url) photoUrls.push(uploaded.url);
+      }
       const saved: any = await maintenanceLogsService.create({
         treeCode: selectedTree,
         activity: selectedActivity,
         remarks: note || undefined,
+        photoUrls: photoUrls.length ? photoUrls : undefined,
       });
+      setBeforePhoto(null);
+      setAfterPhoto(null);
       if (saved?._id) {
         setRecentActivities(prev =>
           prev.map(item =>
@@ -583,14 +679,18 @@ export default function MitraDashboardScreen({
           ? error.message
           : 'Could not save maintenance log',
       );
+    } finally {
+      setSavingLog(false);
     }
   };
 
   const handleSubmitIssue = async () => {
+    if (submittingIssue) return;
     if (!issueDesc.trim()) {
       Alert.alert('Required', 'Please describe the issue.');
       return;
     }
+    setSubmittingIssue(true);
     const optimistic = {
       id: Date.now().toString(),
       type: selectedIssueType,
@@ -601,13 +701,21 @@ export default function MitraDashboardScreen({
     };
     setReportedIssues([optimistic, ...reportedIssues]);
     const desc = issueDesc;
+    const photo = issuePhoto;
     setIssueDesc('');
     try {
+      const photoUrls: string[] = [];
+      if (photo) {
+        const uploaded = await uploadsService.upload(photo, 'trees');
+        if (uploaded?.url) photoUrls.push(uploaded.url);
+      }
       const saved: any = await fieldIssuesService.create({
         type: selectedIssueType,
         priority: selectedPriority,
         description: desc,
+        photoUrls: photoUrls.length ? photoUrls : undefined,
       });
+      setIssuePhoto(null);
       if (saved?._id) {
         setReportedIssues(prev =>
           prev.map(item =>
@@ -633,6 +741,8 @@ export default function MitraDashboardScreen({
           ? error.message
           : 'Could not submit field issue',
       );
+    } finally {
+      setSubmittingIssue(false);
     }
   };
 
@@ -1094,13 +1204,43 @@ export default function MitraDashboardScreen({
               </View>
 
               <View style={styles.photoRow}>
-                <Pressable style={styles.photoBox}>
-                  <AppIcon name="camera-outline" size={24} color="#059669" />
-                  <Text style={styles.photoText}>Before photo</Text>
+                <Pressable
+                  style={styles.photoBox}
+                  onPress={() => {
+                    void pickMaintenancePhoto().then(photo => {
+                      if (photo) setBeforePhoto(photo);
+                    });
+                  }}>
+                  {beforePhoto ? (
+                    <Image
+                      source={{ uri: beforePhoto.uri }}
+                      style={styles.photoPreview}
+                    />
+                  ) : (
+                    <>
+                      <AppIcon name="camera-outline" size={24} color="#059669" />
+                      <Text style={styles.photoText}>Before photo</Text>
+                    </>
+                  )}
                 </Pressable>
-                <Pressable style={styles.photoBox}>
-                  <AppIcon name="camera-outline" size={24} color="#059669" />
-                  <Text style={styles.photoText}>After photo</Text>
+                <Pressable
+                  style={styles.photoBox}
+                  onPress={() => {
+                    void pickMaintenancePhoto().then(photo => {
+                      if (photo) setAfterPhoto(photo);
+                    });
+                  }}>
+                  {afterPhoto ? (
+                    <Image
+                      source={{ uri: afterPhoto.uri }}
+                      style={styles.photoPreview}
+                    />
+                  ) : (
+                    <>
+                      <AppIcon name="camera-outline" size={24} color="#059669" />
+                      <Text style={styles.photoText}>After photo</Text>
+                    </>
+                  )}
                 </Pressable>
               </View>
 
@@ -1115,8 +1255,13 @@ export default function MitraDashboardScreen({
                 />
               </View>
 
-              <Pressable style={styles.saveLogBtn} onPress={handleSaveLog}>
-                <Text style={styles.saveLogBtnText}>Save Maintenance Log</Text>
+              <Pressable
+                style={styles.saveLogBtn}
+                onPress={handleSaveLog}
+                disabled={savingLog}>
+                <Text style={styles.saveLogBtnText}>
+                  {savingLog ? 'Saving…' : 'Save Maintenance Log'}
+                </Text>
               </Pressable>
             </View>
 
@@ -1332,9 +1477,20 @@ export default function MitraDashboardScreen({
                 />
               </View>
 
-              <Pressable style={[styles.photoBox, { height: 50, flexDirection: 'row', marginBottom: 8 }]}>
+              <Pressable
+                style={[
+                  styles.photoBox,
+                  { height: 50, flexDirection: 'row', marginBottom: 8 },
+                ]}
+                onPress={() => {
+                  void pickMaintenancePhoto().then(photo => {
+                    if (photo) setIssuePhoto(photo);
+                  });
+                }}>
                 <AppIcon name="camera-outline" size={20} color="#059669" />
-                <Text style={[styles.photoText, { marginTop: 0, marginLeft: 8 }]}>Attach photo (optional)</Text>
+                <Text style={[styles.photoText, { marginTop: 0, marginLeft: 8 }]}>
+                  {issuePhoto ? 'Photo attached' : 'Attach photo (optional)'}
+                </Text>
               </Pressable>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
@@ -1344,8 +1500,13 @@ export default function MitraDashboardScreen({
                 </Text>
               </View>
 
-              <Pressable style={[styles.saveLogBtn, { backgroundColor: '#e11d48' }]} onPress={handleSubmitIssue}>
-                <Text style={styles.saveLogBtnText}>Submit Report</Text>
+              <Pressable
+                style={[styles.saveLogBtn, { backgroundColor: '#e11d48' }]}
+                onPress={handleSubmitIssue}
+                disabled={submittingIssue}>
+                <Text style={styles.saveLogBtnText}>
+                  {submittingIssue ? 'Submitting…' : 'Submit Report'}
+                </Text>
               </Pressable>
             </View>
 
@@ -2132,6 +2293,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  photoPreview: {
+    width: '100%',
+    height: '100%',
   },
   photoText: {
     fontSize: 12,

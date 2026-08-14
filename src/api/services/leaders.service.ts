@@ -24,9 +24,21 @@ export type Partner = {
 };
 
 export const leadersService = {
-  list(params: { page?: number; limit?: number; isActive?: boolean } = {}) {
+  list(
+    params: {
+      page?: number;
+      limit?: number;
+      isActive?: boolean;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    } = {},
+  ) {
     return apiRequest<Leader[] | { items: Leader[]; meta: unknown }>(
-      `/leaders${toQueryString(params)}`,
+      `/leaders${toQueryString({
+        sortBy: 'displayOrder',
+        sortOrder: 'asc',
+        ...params,
+      })}`,
     );
   },
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   AppState,
   Dimensions,
@@ -14,6 +14,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon, { IconName } from '../components/AppIcon';
 import { Vehicle, computeVehicleStats } from '../data/vehiclesData';
+import { ProfileStat } from '../data/journeyData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import { colors } from '../theme/colors';
@@ -68,10 +69,25 @@ type LeaderCard = {
   achievements?: string[];
 };
 
+const DEFAULT_INSPIRATION_STATS: ProfileStat[] = [
+  { value: '1,00,000+', label: 'Trees Planted' },
+  { value: '3', label: 'World Records' },
+  { value: '30+', label: 'Awards Received' },
+  { value: '25+', label: 'Years of Service' },
+];
+
+const DEFAULT_INSPIRATION_TAGS = [
+  'Environmentalist',
+  'Biodiversity Expert',
+  'Farmer Innovator',
+  'Social Reformer',
+  'World Record Holder',
+];
+
 function mapApiLeaders(items: Leader[]): LeaderCard[] {
   return items
     .slice()
-    .sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999))
+    .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))
     .map(item => {
       const name = item.leaderName.toLowerCase();
       const isRam = name.includes('ram patidar');
@@ -136,6 +152,12 @@ export default function DashboardScreen({
   >();
   const [inspirationTitle, setInspirationTitle] = useState(
     'Environmentalist · Biodiversity Conservationist · Social Reformer',
+  );
+  const [inspirationStats, setInspirationStats] = useState<ProfileStat[]>(
+    DEFAULT_INSPIRATION_STATS,
+  );
+  const [inspirationTags, setInspirationTags] = useState<string[]>(
+    DEFAULT_INSPIRATION_TAGS,
   );
   const [quickStats, setQuickStats] = useState({
     vehicleCount: vehicles.length,
@@ -257,26 +279,28 @@ export default function DashboardScreen({
           setInspirationName(ram.leaderName);
           if (ram.designation) setInspirationTitle(ram.designation);
           foundInspirationPhoto = ram.photo;
-          if (foundInspirationPhoto) {
-            setInspirationPhoto(foundInspirationPhoto);
-            setInspirationPhotoVersion(ram.updatedAt);
-          }
+          setInspirationPhoto(ram.photo || undefined);
+          setInspirationPhotoVersion(ram.updatedAt);
         }
       } else {
         setLeaders([]);
       }
 
-      if (!foundInspirationPhoto && journeyRes.status === 'fulfilled') {
+      if (journeyRes.status === 'fulfilled') {
         const timeline = journeyRes.value;
-        if (timeline?.profile) {
+        if (timeline?.profile?.stats?.length) {
+          setInspirationStats(timeline.profile.stats);
+        }
+        if (timeline?.profile?.tags?.length) {
+          setInspirationTags(timeline.profile.tags);
+        }
+        if (!foundInspirationPhoto && timeline?.profile) {
           if (timeline.profile.name) setInspirationName(timeline.profile.name);
           if (timeline.profile.subtitle) {
             setInspirationTitle(timeline.profile.subtitle);
           }
-          if (timeline.profile.photo) {
-            setInspirationPhoto(timeline.profile.photo);
-            setInspirationPhotoVersion(timeline.profile.updatedAt);
-          }
+          setInspirationPhoto(timeline.profile.photo || undefined);
+          setInspirationPhotoVersion(timeline.profile.updatedAt);
         }
       }
 
@@ -289,32 +313,75 @@ export default function DashboardScreen({
     };
   }, []);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', state => {
-      if (state !== 'active') return;
-      void (async () => {
-        try {
-          const res = await leadersService.list({
-            page: 1,
-            limit: 50,
-            isActive: true,
-          });
-          const list = unwrapList(res);
-          setLeaders(list.length > 0 ? mapApiLeaders(list) : []);
-          const ram = list.find(l =>
-            l.leaderName.toLowerCase().includes('ram patidar'),
-          );
-          if (ram?.photo) {
-            setInspirationPhoto(ram.photo);
-            setInspirationPhotoVersion(ram.updatedAt);
-          }
-        } catch {
-          // keep current leaders
+  const refreshCmsPhotos = useCallback(async () => {
+    const [leadersRes, journeyRes] = await Promise.allSettled([
+      leadersService.list({ page: 1, limit: 50, isActive: true }),
+      journeyService.getTimeline(),
+    ]);
+
+    let foundInspirationPhoto: string | undefined;
+    if (leadersRes.status === 'fulfilled') {
+      const list = unwrapList(leadersRes.value);
+      setLeaders(list.length > 0 ? mapApiLeaders(list) : []);
+      const ram = list.find(l =>
+        l.leaderName.toLowerCase().includes('ram patidar'),
+      );
+      if (ram) {
+        setInspirationName(ram.leaderName);
+        if (ram.designation) setInspirationTitle(ram.designation);
+        foundInspirationPhoto = ram.photo;
+        setInspirationPhoto(ram.photo || undefined);
+        setInspirationPhotoVersion(ram.updatedAt);
+      }
+    }
+
+    if (journeyRes.status === 'fulfilled') {
+      const timeline = journeyRes.value;
+      if (timeline?.profile?.stats?.length) {
+        setInspirationStats(timeline.profile.stats);
+      }
+      if (timeline?.profile?.tags?.length) {
+        setInspirationTags(timeline.profile.tags);
+      }
+      if (!foundInspirationPhoto && timeline?.profile) {
+        if (timeline.profile.name) setInspirationName(timeline.profile.name);
+        if (timeline.profile.subtitle) {
+          setInspirationTitle(timeline.profile.subtitle);
         }
-      })();
-    });
-    return () => sub.remove();
+        setInspirationPhoto(timeline.profile.photo || undefined);
+        setInspirationPhotoVersion(timeline.profile.updatedAt);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        void refreshCmsPhotos();
+      }, 15000);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    start();
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void refreshCmsPhotos();
+        start();
+        return;
+      }
+      stop();
+    });
+    return () => {
+      stop();
+      sub.remove();
+    };
+  }, [refreshCmsPhotos]);
 
   useEffect(() => {
     const fromVehicles = computeVehicleStats(vehicles);
@@ -593,7 +660,7 @@ export default function DashboardScreen({
                   <Text style={styles.inspiredName}>{inspirationName}</Text>
                   <Text style={styles.inspiredDesc}>{inspirationTitle}</Text>
                   <View style={styles.inspiredTags}>
-                    {['Environmentalist', 'Biodiversity Expert', 'Farmer Innovator', 'Social Reformer', 'World Record Holder'].map((tag, i) => (
+                    {inspirationTags.map((tag, i) => (
                       <View key={i} style={styles.inspiredTag}>
                         <Text style={styles.inspiredTagText}>🌱 {tag}</Text>
                       </View>
@@ -604,12 +671,7 @@ export default function DashboardScreen({
 
               {/* Stats Row */}
               <View style={styles.inspiredStatsRow}>
-                {[
-                  { value: '1,00,000+', label: 'Trees Planted' },
-                  { value: '3', label: 'World Records' },
-                  { value: '30+', label: 'Awards Received' },
-                  { value: '25+', label: 'Years of Service' },
-                ].map((stat, i) => (
+                {inspirationStats.map((stat, i) => (
                   <View key={i} style={styles.statCircle}>
                     <Text style={styles.statValue}>{stat.value}</Text>
                     <Text style={styles.statLabel}>{stat.label}</Text>

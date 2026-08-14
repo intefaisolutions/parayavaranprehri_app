@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -69,14 +70,17 @@ function mapPartners(items: Partner[]): PartnerCard[] {
 }
 
 function mapLeaders(items: Leader[]): LeaderCard[] {
-  return items.map(item => ({
-    id: item._id,
-    name: item.leaderName,
-    title: item.designation,
-    photo: item.photo,
-    photoVersion: item.updatedAt,
-    organization: item.organization,
-  }));
+  return items
+    .slice()
+    .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))
+    .map(item => ({
+      id: item._id,
+      name: item.leaderName,
+      title: item.designation,
+      photo: item.photo,
+      photoVersion: item.updatedAt,
+      organization: item.organization,
+    }));
 }
 
 export default function AboutInitiativeScreen({
@@ -103,83 +107,105 @@ export default function AboutInitiativeScreen({
   const [stats, setStats] = useState<ProfileStat[]>([]);
   const [tags, setTags] = useState<string[]>([]);
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const info = await staticDataService.getInitiativeInfo();
-        if (mounted && info?.about) {
-          if (info.about.vision) setAboutDescription(info.about.vision);
-          if (info.about.description) setAboutBody(info.about.description);
-          if (info.about.mission) setMissionText(info.about.mission);
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn(
-            error instanceof ApiError
-              ? error.message
-              : 'Failed to load initiative info',
-          );
-        }
+  const loadCms = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
+    try {
+      const info = await staticDataService.getInitiativeInfo();
+      if (info?.about) {
+        if (info.about.vision) setAboutDescription(info.about.vision);
+        if (info.about.description) setAboutBody(info.about.description);
+        if (info.about.mission) setMissionText(info.about.mission);
       }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn(
+          error instanceof ApiError
+            ? error.message
+            : 'Failed to load initiative info',
+        );
+      }
+    }
 
-      try {
-        const res = await partnersService.list({
-          page: 1,
-          limit: 20,
-          status: 'Active',
-        });
-        const list = unwrapList(res);
-        if (mounted) {
-          const mapped = mapPartners(list);
-          setPartners(mapped);
-          setFeaturedPartner(mapped[0] ?? null);
-        }
-      } catch {
-        if (mounted) {
-          setPartners([]);
-          setFeaturedPartner(null);
-        }
-      }
+    try {
+      const res = await partnersService.list({
+        page: 1,
+        limit: 20,
+        status: 'Active',
+      });
+      const list = unwrapList(res);
+      const mapped = mapPartners(list);
+      setPartners(mapped);
+      setFeaturedPartner(mapped[0] ?? null);
+    } catch {
+      setPartners([]);
+      setFeaturedPartner(null);
+    }
 
-      try {
-        const leadersRes = await leadersService.list({
-          page: 1,
-          limit: 20,
-          isActive: true,
-        });
-        const list = unwrapList(leadersRes);
-        if (mounted) {
-          setLeaders(mapLeaders(list));
-        }
-      } catch {
-        if (mounted) setLeaders([]);
-      }
+    try {
+      const leadersRes = await leadersService.list({
+        page: 1,
+        limit: 20,
+        isActive: true,
+      });
+      setLeaders(mapLeaders(unwrapList(leadersRes)));
+    } catch {
+      setLeaders([]);
+    }
 
-      try {
-        const timeline = await journeyService.getTimeline();
-        if (mounted && timeline?.profile) {
-          if (timeline.profile.name) setFounderName(timeline.profile.name);
-          if (timeline.profile.subtitle) {
-            setFounderSubtitle(timeline.profile.subtitle);
-          }
-          if (timeline.profile.photo) {
-            setFounderPhoto(timeline.profile.photo);
-            setFounderPhotoVersion(timeline.profile.updatedAt);
-          }
-          if (timeline.profile.stats?.length) setStats(timeline.profile.stats);
-          if (timeline.profile.tags?.length) setTags(timeline.profile.tags);
+    try {
+      const timeline = await journeyService.getTimeline();
+      if (timeline?.profile) {
+        if (timeline.profile.name) setFounderName(timeline.profile.name);
+        if (timeline.profile.subtitle) {
+          setFounderSubtitle(timeline.profile.subtitle);
         }
-      } catch {
-        // founder block optional
-      } finally {
-        if (mounted) setLoading(false);
+        setFounderPhoto(timeline.profile.photo || undefined);
+        setFounderPhotoVersion(timeline.profile.updatedAt);
+        if (timeline.profile.stats?.length) setStats(timeline.profile.stats);
+        if (timeline.profile.tags?.length) setTags(timeline.profile.tags);
+      } else {
+        setFounderPhoto(undefined);
+        setFounderPhotoVersion(undefined);
       }
-    })();
-    return () => {
-      mounted = false;
-    };
+    } catch {
+      // founder block optional
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadCms();
+  }, [loadCms]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        void loadCms({ silent: true });
+      }, 15000);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    start();
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void loadCms({ silent: true });
+        start();
+        return;
+      }
+      stop();
+    });
+    return () => {
+      stop();
+      sub.remove();
+    };
+  }, [loadCms]);
 
   return (
     <View style={styles.root}>

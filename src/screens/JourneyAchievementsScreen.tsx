@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -72,75 +73,110 @@ export default function JourneyAchievementsScreen({
   const [tags, setTags] = useState<string[]>([]);
   const [inspiration, setInspiration] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const timeline = await journeyService.getTimeline();
-        if (!mounted) return;
-        if (!timeline?.profile && !(timeline?.achievements?.length > 0)) {
-          setErrorMsg('');
-          setProfileName('');
-          setAchievements([]);
-          setStats([]);
-          setTags([]);
-          setInspiration('');
-          return;
-        }
-        if (timeline.profile?.name) setProfileName(timeline.profile.name);
-        if (timeline.profile?.subtitle) {
-          setProfileSubtitle(timeline.profile.subtitle);
-        }
-        if (timeline.profile?.photo) {
-          setProfilePhoto(timeline.profile.photo);
-          setProfilePhotoVersion(timeline.profile.updatedAt);
-        }
-        if (timeline.profile?.stats?.length) {
-          setStats(timeline.profile.stats);
-        }
-        if (timeline.profile?.tags?.length) {
-          setTags(timeline.profile.tags);
-        }
-        if (timeline.profile?.inspirationText) {
-          setInspiration(timeline.profile.inspirationText);
-        }
-        if (timeline.achievements?.length) {
-          setAchievements(
-            timeline.achievements.map(item => ({
+  const loadTimeline = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
+    try {
+      const timeline = await journeyService.getTimeline();
+      if (!timeline?.profile && !(timeline?.achievements?.length > 0)) {
+        setErrorMsg('');
+        setProfileName('');
+        setProfilePhoto(undefined);
+        setProfilePhotoVersion(undefined);
+        setAchievements([]);
+        setStats([]);
+        setTags([]);
+        setInspiration('');
+        return;
+      }
+      if (timeline.profile?.name) setProfileName(timeline.profile.name);
+      if (timeline.profile?.subtitle) {
+        setProfileSubtitle(timeline.profile.subtitle);
+      }
+      setProfilePhoto(timeline.profile?.photo || undefined);
+      setProfilePhotoVersion(timeline.profile?.updatedAt);
+      if (timeline.profile?.stats?.length) {
+        setStats(timeline.profile.stats);
+      }
+      if (timeline.profile?.tags?.length) {
+        setTags(timeline.profile.tags);
+      }
+      if (timeline.profile?.inspirationText) {
+        setInspiration(timeline.profile.inspirationText);
+      }
+      if (timeline.achievements?.length) {
+        setAchievements(
+          timeline.achievements
+            .map(item => ({
               id: item._id,
               year: item.year,
               type: item.type,
               title: item.title,
               subtitle: item.subtitle,
               imageUrl: item.imageUrl,
+              displayOrder: item.displayOrder,
               updatedAt: item.updatedAt,
-            })),
-          );
-        } else {
-          setAchievements([]);
-        }
-        setErrorMsg('');
-      } catch (error) {
-        if (mounted) {
-          setErrorMsg(
-            error instanceof ApiError
-              ? error.message
-              : 'Failed to load journey',
-          );
-          setProfileName('');
-          setAchievements([]);
-          setStats([]);
-          setTags([]);
-          setInspiration('');
-        }
-      } finally {
-        if (mounted) setLoading(false);
+            }))
+            .sort(
+              (a, b) =>
+                (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999),
+            ),
+        );
+      } else {
+        setAchievements([]);
       }
-    })();
-    return () => {
-      mounted = false;
-    };
+      setErrorMsg('');
+    } catch (error) {
+      setErrorMsg(
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to load journey',
+      );
+      if (!opts?.silent) {
+        setProfileName('');
+        setProfilePhoto(undefined);
+        setProfilePhotoVersion(undefined);
+        setAchievements([]);
+        setStats([]);
+        setTags([]);
+        setInspiration('');
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadTimeline();
+  }, [loadTimeline]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        void loadTimeline({ silent: true });
+      }, 15000);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    start();
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void loadTimeline({ silent: true });
+        start();
+        return;
+      }
+      stop();
+    });
+    return () => {
+      stop();
+      sub.remove();
+    };
+  }, [loadTimeline]);
 
   const isEmpty =
     !loading &&
