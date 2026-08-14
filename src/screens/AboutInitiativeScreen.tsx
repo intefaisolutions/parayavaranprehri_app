@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,7 +21,7 @@ import {
   type Leader,
   type Partner,
 } from '../api';
-import { resolveMediaUrl } from '../api/mediaUrl';
+import RemoteImage from '../components/RemoteImage';
 
 type Props = {
   onBack: () => void;
@@ -45,6 +44,7 @@ type LeaderCard = {
   name: string;
   title: string;
   photo?: string;
+  photoVersion?: string;
   organization?: string;
 };
 
@@ -74,6 +74,7 @@ function mapLeaders(items: Leader[]): LeaderCard[] {
     name: item.leaderName,
     title: item.designation,
     photo: item.photo,
+    photoVersion: item.updatedAt,
     organization: item.organization,
   }));
 }
@@ -96,6 +97,9 @@ export default function AboutInitiativeScreen({
   const [founderName, setFounderName] = useState('');
   const [founderSubtitle, setFounderSubtitle] = useState('');
   const [founderPhoto, setFounderPhoto] = useState<string | undefined>();
+  const [founderPhotoVersion, setFounderPhotoVersion] = useState<
+    string | undefined
+  >();
   const [stats, setStats] = useState<ProfileStat[]>([]);
   const [tags, setTags] = useState<string[]>([]);
 
@@ -146,14 +150,7 @@ export default function AboutInitiativeScreen({
         });
         const list = unwrapList(leadersRes);
         if (mounted) {
-          const mapped = mapLeaders(list);
-          const withPhotos = await Promise.all(
-            mapped.map(async row => ({
-              ...row,
-              photo: await resolveMediaUrl(row.photo),
-            })),
-          );
-          setLeaders(withPhotos);
+          setLeaders(mapLeaders(list));
         }
       } catch {
         if (mounted) setLeaders([]);
@@ -166,7 +163,10 @@ export default function AboutInitiativeScreen({
           if (timeline.profile.subtitle) {
             setFounderSubtitle(timeline.profile.subtitle);
           }
-          if (timeline.profile.photo) setFounderPhoto(timeline.profile.photo);
+          if (timeline.profile.photo) {
+            setFounderPhoto(timeline.profile.photo);
+            setFounderPhotoVersion(timeline.profile.updatedAt);
+          }
           if (timeline.profile.stats?.length) setStats(timeline.profile.stats);
           if (timeline.profile.tags?.length) setTags(timeline.profile.tags);
         }
@@ -237,8 +237,9 @@ export default function AboutInitiativeScreen({
                   <View style={styles.founderRow}>
                     <View style={styles.avatarWrap}>
                       {founderPhoto ? (
-                        <Image
-                          source={{ uri: founderPhoto }}
+                        <RemoteImage
+                          uri={founderPhoto}
+                          version={founderPhotoVersion}
                           style={styles.avatar}
                         />
                       ) : (
@@ -384,8 +385,9 @@ export default function AboutInitiativeScreen({
               {leaders.map(leader => (
                 <View key={leader.id} style={styles.leaderRow}>
                   {leader.photo ? (
-                    <Image
-                      source={{ uri: leader.photo }}
+                    <RemoteImage
+                      uri={leader.photo}
+                      version={leader.photoVersion}
                       style={styles.leaderAvatar}
                     />
                   ) : (

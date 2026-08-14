@@ -131,6 +131,7 @@ export async function apiRequest<T>(
 
   const requestHeaders: Record<string, string> = {
     Accept: 'application/json',
+    'Cache-Control': 'no-cache',
     ...headers,
   };
 
@@ -155,6 +156,7 @@ export async function apiRequest<T>(
       headers: requestHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
+      cache: 'no-store',
     });
   } catch (error) {
     clearTimeout(timeoutId);

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AppState,
   Dimensions,
   Image,
   Pressable,
@@ -29,7 +30,7 @@ import {
   type Leader,
   type LeaderboardEntry,
 } from '../api';
-import { resolveMediaUrl } from '../api/mediaUrl';
+import RemoteImage from '../components/RemoteImage';
 
 const { width } = Dimensions.get('window');
 
@@ -62,6 +63,7 @@ type LeaderCard = {
   quote: string;
   buttonText: string;
   imageUri?: string;
+  photoVersion?: string;
   topBadge?: string;
   achievements?: string[];
 };
@@ -82,8 +84,8 @@ function mapApiLeaders(items: Leader[]): LeaderCard[] {
           ? `"${item.organization}"`
           : '"Committed to a greener Bharat."',
         buttonText: '🇮🇳 Green Mission',
-        // Admin → Mongo `photo` (S3 permanent URL); API/app resolve to signed URL.
         imageUri: item.photo || undefined,
+        photoVersion: item.updatedAt,
         topBadge: isModi ? 'Inspiration' : undefined,
         achievements: isRam
           ? [
@@ -98,13 +100,7 @@ function mapApiLeaders(items: Leader[]): LeaderCard[] {
 }
 
 async function mapApiLeadersWithMedia(items: Leader[]): Promise<LeaderCard[]> {
-  const cards = mapApiLeaders(items);
-  return Promise.all(
-    cards.map(async card => ({
-      ...card,
-      imageUri: await resolveMediaUrl(card.imageUri),
-    })),
-  );
+  return mapApiLeaders(items);
 }
 
 export default function DashboardScreen({
@@ -135,6 +131,9 @@ export default function DashboardScreen({
   const [contributionCo2, setContributionCo2] = useState(0);
   const [inspirationName, setInspirationName] = useState('Dr. Ram Patidar');
   const [inspirationPhoto, setInspirationPhoto] = useState<string | undefined>();
+  const [inspirationPhotoVersion, setInspirationPhotoVersion] = useState<
+    string | undefined
+  >();
   const [inspirationTitle, setInspirationTitle] = useState(
     'Environmentalist · Biodiversity Conservationist · Social Reformer',
   );
@@ -257,8 +256,11 @@ export default function DashboardScreen({
         if (ram) {
           setInspirationName(ram.leaderName);
           if (ram.designation) setInspirationTitle(ram.designation);
-          foundInspirationPhoto = await resolveMediaUrl(ram.photo);
-          if (foundInspirationPhoto) setInspirationPhoto(foundInspirationPhoto);
+          foundInspirationPhoto = ram.photo;
+          if (foundInspirationPhoto) {
+            setInspirationPhoto(foundInspirationPhoto);
+            setInspirationPhotoVersion(ram.updatedAt);
+          }
         }
       } else {
         setLeaders([]);
@@ -271,8 +273,10 @@ export default function DashboardScreen({
           if (timeline.profile.subtitle) {
             setInspirationTitle(timeline.profile.subtitle);
           }
-          const photo = await resolveMediaUrl(timeline.profile.photo);
-          if (photo) setInspirationPhoto(photo);
+          if (timeline.profile.photo) {
+            setInspirationPhoto(timeline.profile.photo);
+            setInspirationPhotoVersion(timeline.profile.updatedAt);
+          }
         }
       }
 
@@ -283,6 +287,33 @@ export default function DashboardScreen({
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') return;
+      void (async () => {
+        try {
+          const res = await leadersService.list({
+            page: 1,
+            limit: 50,
+            isActive: true,
+          });
+          const list = unwrapList(res);
+          setLeaders(list.length > 0 ? mapApiLeaders(list) : []);
+          const ram = list.find(l =>
+            l.leaderName.toLowerCase().includes('ram patidar'),
+          );
+          if (ram?.photo) {
+            setInspirationPhoto(ram.photo);
+            setInspirationPhotoVersion(ram.updatedAt);
+          }
+        } catch {
+          // keep current leaders
+        }
+      })();
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -410,10 +441,10 @@ export default function DashboardScreen({
               <View style={styles.personRow}>
                 <View style={styles.personAvatar}>
                   {inspirationPhoto ? (
-                    <Image
-                      source={{ uri: inspirationPhoto }}
+                    <RemoteImage
+                      uri={inspirationPhoto}
+                      version={inspirationPhotoVersion}
                       style={styles.personAvatarImage}
-                      resizeMode="cover"
                     />
                   ) : (
                     <Text style={styles.personAvatarInitials}>
@@ -536,10 +567,10 @@ export default function DashboardScreen({
                 <View style={styles.inspiredAvatarContainer}>
                   <View style={styles.inspiredAvatar}>
                     {inspirationPhoto ? (
-                      <Image
-                        source={{ uri: inspirationPhoto }}
+                      <RemoteImage
+                        uri={inspirationPhoto}
+                        version={inspirationPhotoVersion}
                         style={styles.inspiredAvatarImage}
-                        resizeMode="cover"
                       />
                     ) : (
                       <Text style={styles.inspiredAvatarInitials}>
@@ -903,10 +934,10 @@ export default function DashboardScreen({
                 ) : null}
                 <View style={styles.leaderAvatarContainer}>
                   {leader.imageUri ? (
-                    <Image
-                      source={{ uri: leader.imageUri }}
+                    <RemoteImage
+                      uri={leader.imageUri}
+                      version={leader.photoVersion}
                       style={styles.leaderAvatarImage}
-                      resizeMode="cover"
                     />
                   ) : (
                     <View style={[styles.leaderAvatarImage, styles.leaderAvatarFallback]}>

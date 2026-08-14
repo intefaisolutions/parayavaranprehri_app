@@ -12,6 +12,7 @@ export type Achievement = {
   title: string;
   subtitle: string;
   imageUrl?: string;
+  updatedAt?: string;
 };
 
 export type ProfileStat = {

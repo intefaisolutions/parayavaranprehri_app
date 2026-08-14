@@ -8,6 +8,7 @@ export type Leader = {
   photo?: string;
   displayOrder?: number;
   isActive?: boolean;
+  updatedAt?: string;
 };
 
 export type Partner = {

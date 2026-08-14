@@ -8,6 +8,7 @@ export type JourneyAchievementApi = {
   subtitle: string;
   imageUrl?: string;
   displayOrder?: number;
+  updatedAt?: string;
 };
 
 export type JourneyProfileApi = {
@@ -18,6 +19,7 @@ export type JourneyProfileApi = {
   stats?: { value: string; label: string }[];
   tags?: string[];
   inspirationText?: string;
+  updatedAt?: string;
 };
 
 export type JourneyTimeline = {

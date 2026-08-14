@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
   ProfileStat,
 } from '../data/journeyData';
 import { ApiError, journeyService } from '../api';
+import RemoteImage from '../components/RemoteImage';
 import { getBottomInset, getTopInset } from '../utils/layout';
 
 type Props = {
@@ -64,6 +64,9 @@ export default function JourneyAchievementsScreen({
     'Journey & Achievements',
   );
   const [profilePhoto, setProfilePhoto] = useState<string | undefined>();
+  const [profilePhotoVersion, setProfilePhotoVersion] = useState<
+    string | undefined
+  >();
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [stats, setStats] = useState<ProfileStat[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -88,7 +91,10 @@ export default function JourneyAchievementsScreen({
         if (timeline.profile?.subtitle) {
           setProfileSubtitle(timeline.profile.subtitle);
         }
-        if (timeline.profile?.photo) setProfilePhoto(timeline.profile.photo);
+        if (timeline.profile?.photo) {
+          setProfilePhoto(timeline.profile.photo);
+          setProfilePhotoVersion(timeline.profile.updatedAt);
+        }
         if (timeline.profile?.stats?.length) {
           setStats(timeline.profile.stats);
         }
@@ -107,6 +113,7 @@ export default function JourneyAchievementsScreen({
               title: item.title,
               subtitle: item.subtitle,
               imageUrl: item.imageUrl,
+              updatedAt: item.updatedAt,
             })),
           );
         } else {
@@ -197,8 +204,9 @@ export default function JourneyAchievementsScreen({
                 <View style={styles.profileAvatarWrap}>
                   <View style={styles.profileAvatar}>
                     {profilePhoto ? (
-                      <Image
-                        source={{ uri: profilePhoto }}
+                      <RemoteImage
+                        uri={profilePhoto}
+                        version={profilePhotoVersion}
                         style={styles.profilePhoto}
                       />
                     ) : (
@@ -304,10 +312,10 @@ function TimelineItem({
         <Text style={styles.timelineCardSubtitle}>{item.subtitle}</Text>
 
         {item.imageUrl ? (
-          <Image
-            source={{ uri: item.imageUrl }}
+          <RemoteImage
+            uri={item.imageUrl}
+            version={item.updatedAt}
             style={styles.timelineImage}
-            resizeMode="cover"
           />
         ) : null}
       </View>
