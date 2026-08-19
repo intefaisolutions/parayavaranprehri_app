@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,23 +7,18 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { Vehicle } from '../data/vehiclesData';
 import { getVehicleIconName } from '../utils/vehicleIcons';
 
-const { width } = Dimensions.get('window');
-
 type Props = {
   vehicles: Vehicle[];
-  onAddVehicle: () => void;
   onViewDetails: (vehicle: Vehicle) => void;
   onNotifications?: () => void;
 };
 
 export default function VehiclesScreen({
   vehicles,
-  onAddVehicle,
   onViewDetails,
   onNotifications,
 }: Props) {
@@ -48,32 +42,13 @@ export default function VehiclesScreen({
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        <LinearGradient
-          colors={['#105e2d', '#34d399']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.onboardCard}>
-          <Pressable
-            style={styles.onboardPressable}
-            onPress={onAddVehicle}
-            android_ripple={{ color: 'rgba(255,255,255,0.25)' }}>
-            <View style={styles.onboardTextContainer}>
-              <Text style={styles.onboardLabel}>ONBOARD A NEW VEHICLE</Text>
-              <Text style={styles.onboardTitle}>Register & start contributing</Text>
-            </View>
-            <View style={styles.addButton}>
-              <Text style={styles.addIcon}>+</Text>
-            </View>
-          </Pressable>
-        </LinearGradient>
-
         <View style={styles.listContainer}>
           {vehicles.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No vehicles yet</Text>
+              <Text style={styles.emptyTitle}>No vehicles found in your name</Text>
               <Text style={styles.emptySubtitle}>
-                No ShieldSure insurance vehicle found for your mobile. Your
-                slots are empty — onboard a vehicle to start contributing.
+                Only vehicles linked to your mobile through insurance are shown
+                here. You cannot register a new vehicle from the app.
               </Text>
             </View>
           ) : (
@@ -204,48 +179,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingBottom: 120,
-  },
-  onboardCard: {
-    borderRadius: 28,
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  onboardPressable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 22,
-  },
-  onboardTextContainer: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  onboardLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.8)',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  onboardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-    lineHeight: 24,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addIcon: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: '300',
-    marginTop: -2,
   },
   listContainer: {
     gap: 16,

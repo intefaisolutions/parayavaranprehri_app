@@ -8,6 +8,7 @@ export type AuthUser = {
   phone?: string;
   district?: string;
   state?: string;
+  vidhanSabha?: string;
   avatar?: string;
 };
 

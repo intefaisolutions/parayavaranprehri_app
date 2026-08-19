@@ -4,8 +4,11 @@ import {
   Alert,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  PermissionsAndroid,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { Vehicle } from '../data/vehiclesData';
@@ -43,7 +46,7 @@ const { width } = Dimensions.get('window');
 
 interface ProfileScreenProps {
   vehicles: Vehicle[];
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
   onMyVehicles?: () => void;
   onVehicleIdentity?: () => void;
   onRashiVan?: () => void;
@@ -112,6 +115,7 @@ export default function ProfileScreen({
   const [vidhanSabha, setVidhanSabha] = useState('');
   const [constituencies, setConstituencies] = useState<ConstituencyItem[]>([]);
   const [loadingConstituencies, setLoadingConstituencies] = useState(false);
+  const [hasPerson, setHasPerson] = useState(false);
   const [communityTitle, setCommunityTitle] = useState('Eco Circle');
   const [communitySubtitle, setCommunitySubtitle] = useState(
     'Loading contributors…',
@@ -139,6 +143,11 @@ export default function ProfileScreen({
     const av = user.avatar ? String(user.avatar) : '';
     setAvatar(av || undefined);
     setAvatarUrl(av);
+    const sabha = String(user.vidhanSabha || '');
+    if (sabha) {
+      setVidhanSabha(sabha);
+      setCommunityTitle(`${sabha} Eco Circle`);
+    }
   };
 
   useEffect(() => {
@@ -160,6 +169,12 @@ export default function ProfileScreen({
         if (mounted && me) applyUser(me);
       } catch {
         // keep stored profile
+      }
+      try {
+        const person = await personsService.getMe();
+        if (mounted) setHasPerson(Boolean(person?.personId || person?._id));
+      } catch {
+        if (mounted) setHasPerson(false);
       }
       try {
         const personStats = await personsService.getMyStats();
@@ -342,20 +357,17 @@ export default function ProfileScreen({
     }
   };
 
-  const pickAvatar = async () => {
-    if (uploadingAvatar) return;
-    const result = await launchImageLibrary({
-      mediaType: 'photo',
-      quality: 0.8,
-      selectionLimit: 1,
-    });
-    if (result.didCancel || !result.assets?.[0]?.uri) return;
-    const asset = result.assets[0];
+  const pickAvatarFromAsset = async (asset: {
+    uri?: string;
+    fileName?: string;
+    type?: string;
+  }) => {
+    if (!asset.uri) return;
     setUploadingAvatar(true);
     try {
       const uploaded = await uploadsService.upload(
         {
-          uri: asset.uri!,
+          uri: asset.uri,
           name: asset.fileName || `avatar-${Date.now()}.jpg`,
           type: asset.type || 'image/jpeg',
         },
@@ -375,21 +387,111 @@ export default function ProfileScreen({
     }
   };
 
+  const pickAvatar = () => {
+    if (uploadingAvatar) return;
+    Alert.alert('Profile photo', 'Choose image source', [
+      {
+        text: 'Camera',
+        onPress: () => {
+          void (async () => {
+            if (Platform.OS === 'android') {
+              const granted = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.CAMERA,
+                {
+                  title: 'Camera permission',
+                  message: 'Allow camera to take your profile photo',
+                  buttonPositive: 'Allow',
+                  buttonNegative: 'Deny',
+                },
+              );
+              if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                Alert.alert('Permission needed', 'Camera permission is required.');
+                return;
+              }
+            }
+            const result = await launchCamera({
+              mediaType: 'photo',
+              quality: 0.8,
+              saveToPhotos: false,
+            });
+            if (result.didCancel || !result.assets?.[0]) return;
+            await pickAvatarFromAsset(result.assets[0]);
+          })();
+        },
+      },
+      {
+        text: 'Gallery',
+        onPress: () => {
+          void (async () => {
+            const result = await launchImageLibrary({
+              mediaType: 'photo',
+              quality: 0.8,
+              selectionLimit: 1,
+            });
+            if (result.didCancel || !result.assets?.[0]) return;
+            await pickAvatarFromAsset(result.assets[0]);
+          })();
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
+      const phoneDigits = editPhone.replace(/\D/g, '').slice(-10);
+      const avatarValue = avatarUrl.trim();
       const updated = (await usersService.updateMe({
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
-        phone: editPhone.trim() || undefined,
+        phone: phoneDigits.length === 10 ? phoneDigits : undefined,
         district: district.trim() || undefined,
         state: stateName.trim() || undefined,
-        avatar: avatarUrl.trim() || '',
-        ...(vidhanSabha.trim()
-          ? { vidhanSabha: vidhanSabha.trim() }
-          : {}),
+        avatar:
+          avatarValue.startsWith('http') || avatarValue === ''
+            ? avatarValue
+            : undefined,
+        vidhanSabha: vidhanSabha.trim() || undefined,
       })) as AuthUser & Record<string, unknown>;
       applyUser(updated);
+      const personName =
+        `${firstName.trim()} ${lastName.trim()}`.trim() || name;
+      const personPayload = {
+        name: personName,
+        mobile: phoneDigits.length === 10 ? phoneDigits : editPhone.trim(),
+        address: district.trim() || undefined,
+        city: district.trim() || undefined,
+        state: stateName.trim() || undefined,
+        photo:
+          avatarValue.startsWith('http') ? avatarValue : undefined,
+      };
+      try {
+        if (hasPerson) {
+          await personsService.updateMe(personPayload);
+        } else {
+          const stored = await getStoredUser();
+          await personsService.selfRegister({
+            ...personPayload,
+            email: stored?.email,
+          });
+          setHasPerson(true);
+        }
+      } catch (personError) {
+        if (!hasPerson) {
+          try {
+            const existing = await personsService.getMe();
+            if (existing?.personId || existing?._id) {
+              await personsService.updateMe(personPayload);
+              setHasPerson(true);
+            } else {
+              throw personError;
+            }
+          } catch {
+            throw personError;
+          }
+        }
+      }
       if (vidhanSabha.trim()) {
         setVidhanSabha(vidhanSabha.trim());
         setCommunityTitle(`${vidhanSabha.trim()} Eco Circle`);
@@ -404,7 +506,7 @@ export default function ProfileScreen({
         await saveSession({
           accessToken,
           refreshToken,
-          phone: editPhone.trim() || undefined,
+          phone: phoneDigits || stored.phone,
           user: {
             ...stored,
             firstName: String(updated.firstName || stored.firstName),
@@ -492,6 +594,23 @@ export default function ProfileScreen({
           </View>
         </LinearGradient>
 
+        {!hasPerson ? (
+          <Pressable
+            style={styles.addProfileBanner}
+            onPress={() => setEditOpen(true)}>
+            <View style={styles.actionIconCircle}>
+              <AppIcon name="account-plus" size={24} color="#ffffff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionCardTitle}>Add profile</Text>
+              <Text style={styles.addProfileSubtitle}>
+                Save your name, photo and location
+              </Text>
+            </View>
+            <Text style={styles.chevronIcon}>›</Text>
+          </Pressable>
+        ) : null}
+
         {/* 2x2 ACTION GRID */}
         <View style={styles.actionGrid}>
           {/* Card 1 */}
@@ -568,106 +687,176 @@ export default function ProfileScreen({
           </View>
         </View>
 
-        {/* SIGN OUT BUTTON — kept above floating bottom nav */}
+      </ScrollView>
+
+      <View style={styles.signOutFooter}>
         <Pressable
           style={styles.signOutButton}
-          onPress={onLogout}
-          hitSlop={8}
+          onPress={() => {
+            void onLogout();
+          }}
+          hitSlop={12}
           android_ripple={{ color: '#fecdd3' }}>
           <AppIcon name="logout" size={20} color="#e11d48" />
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
-
-      </ScrollView>
+      </View>
 
       <Modal visible={editOpen} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => !saving && setEditOpen(false)}
+          />
           <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>
+                {hasPerson ? 'Edit profile' : 'Add profile'}
+              </Text>
+              <Pressable
+                style={styles.modalCloseBtn}
+                onPress={() => setEditOpen(false)}
+                disabled={saving}
+                hitSlop={8}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+
             <ScrollView
               keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>Edit profile</Text>
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScroll}>
+              <View style={styles.modalPhotoRow}>
+                <View style={styles.modalAvatar}>
+                  {avatarUrl || avatar ? (
+                    <Image
+                      source={{ uri: avatarUrl || avatar }}
+                      style={styles.modalAvatarImage}
+                    />
+                  ) : (
+                    <Text style={styles.modalAvatarInitials}>
+                      {initialsFromName(
+                        `${firstName} ${lastName}`.trim() || name,
+                      )}
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  style={styles.modalPhotoBtn}
+                  onPress={() => void pickAvatar()}
+                  disabled={uploadingAvatar}>
+                  {uploadingAvatar ? (
+                    <ActivityIndicator color="#126e35" />
+                  ) : (
+                    <>
+                      <AppIcon name="camera-outline" size={18} color="#126e35" />
+                      <Text style={styles.modalPhotoBtnText}>
+                        {avatarUrl ? 'Change photo' : 'Add photo'}
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+
+              <Text style={styles.modalLabel}>First name</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="First name"
+                placeholder="Enter first name"
+                placeholderTextColor="#9ca3af"
                 value={firstName}
                 onChangeText={setFirstName}
               />
+              <Text style={styles.modalLabel}>Last name</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="Last name"
+                placeholder="Enter last name"
+                placeholderTextColor="#9ca3af"
                 value={lastName}
                 onChangeText={setLastName}
               />
+              <Text style={styles.modalLabel}>Mobile</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="Phone"
-                keyboardType="phone-pad"
+                style={[styles.modalInput, styles.modalInputReadonly]}
                 value={editPhone}
-                onChangeText={setEditPhone}
+                editable={false}
               />
+              <Text style={styles.modalHint}>Linked to your login number</Text>
+
+              <Text style={styles.modalLabel}>District</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="District"
+                placeholderTextColor="#9ca3af"
                 value={district}
                 onChangeText={text => {
                   setDistrict(text);
                   setVidhanSabha('');
                 }}
               />
+              <Text style={styles.modalLabel}>State</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="State"
+                placeholderTextColor="#9ca3af"
                 value={stateName}
                 onChangeText={text => {
                   setStateName(text);
                   setVidhanSabha('');
                 }}
               />
+
+              <Text style={styles.modalLabel}>Vidhan Sabha</Text>
               {district.trim() && stateName.trim() ? (
                 <View style={styles.constituencyBlock}>
-                  <Text style={styles.vidhanHint}>Vidhan Sabha</Text>
                   {loadingConstituencies ? (
                     <ActivityIndicator color="#126e35" />
                   ) : constituencies.length === 0 ? (
                     <TextInput
                       style={styles.modalInput}
                       placeholder="Type vidhan sabha"
+                      placeholderTextColor="#9ca3af"
                       value={vidhanSabha}
                       onChangeText={setVidhanSabha}
                     />
                   ) : (
-                    constituencies.map(item => {
-                      const label = constituencyLabel(item);
-                      const selected = vidhanSabha === label;
-                      return (
-                        <Pressable
-                          key={String(item._id || item.id || label)}
-                          style={[
-                            styles.constituencyChip,
-                            selected && styles.constituencyChipActive,
-                          ]}
-                          onPress={() => setVidhanSabha(label)}>
-                          <Text
+                    <View style={styles.constituencyWrap}>
+                      {constituencies.map(item => {
+                        const label = constituencyLabel(item);
+                        const selected = vidhanSabha === label;
+                        return (
+                          <Pressable
+                            key={String(item._id || item.id || label)}
                             style={[
-                              styles.constituencyChipText,
-                              selected && styles.constituencyChipTextActive,
-                            ]}>
-                            {label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })
+                              styles.constituencyChip,
+                              selected && styles.constituencyChipActive,
+                            ]}
+                            onPress={() => setVidhanSabha(label)}>
+                            <Text
+                              style={[
+                                styles.constituencyChipText,
+                                selected && styles.constituencyChipTextActive,
+                              ]}
+                              numberOfLines={1}>
+                              {label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   )}
-                  {vidhanSabha ? (
-                    <Text style={styles.vidhanHint}>Selected: {vidhanSabha}</Text>
-                  ) : null}
                 </View>
-              ) : vidhanSabha ? (
-                <Text style={styles.vidhanHint}>
-                  Vidhan Sabha: {vidhanSabha}
-                </Text>
-              ) : null}
+              ) : (
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter district and state, or use GPS"
+                  placeholderTextColor="#9ca3af"
+                  value={vidhanSabha}
+                  onChangeText={setVidhanSabha}
+                />
+              )}
               <Pressable
                 style={styles.avatarPickBtn}
                 onPress={() => void detectLocation()}
@@ -676,50 +865,32 @@ export default function ProfileScreen({
                   <ActivityIndicator color="#126e35" />
                 ) : (
                   <Text style={styles.avatarPickText}>
-                    Detect Vidhan Sabha from GPS
+                    Detect location from GPS
                   </Text>
                 )}
+              </Pressable>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancel}
+                onPress={() => setEditOpen(false)}
+                disabled={saving}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={styles.avatarPickBtn}
-                onPress={() => void pickAvatar()}
-                disabled={uploadingAvatar}>
-                {uploadingAvatar ? (
-                  <ActivityIndicator color="#126e35" />
+                style={styles.modalSave}
+                onPress={handleSaveProfile}
+                disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.avatarPickText}>
-                    {avatarUrl ? 'Change photo' : 'Pick photo from gallery'}
-                  </Text>
+                  <Text style={styles.modalSaveText}>Save</Text>
                 )}
               </Pressable>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Or paste avatar image URL"
-                value={avatarUrl}
-                onChangeText={setAvatarUrl}
-                autoCapitalize="none"
-              />
-              <View style={styles.modalActions}>
-                <Pressable
-                  style={styles.modalCancel}
-                  onPress={() => setEditOpen(false)}
-                  disabled={saving}>
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.modalSave}
-                  onPress={handleSaveProfile}
-                  disabled={saving}>
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.modalSaveText}>Save</Text>
-                  )}
-                </Pressable>
-              </View>
-            </ScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -757,56 +928,154 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 999,
   },
-  modalBackdrop: {
+  modalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalCard: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: getBottomInset(24),
-    maxHeight: '88%',
-    gap: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: getBottomInset(16),
+    maxHeight: '92%',
+    zIndex: 1,
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d1d5db',
+    marginBottom: 12,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#0a3617',
-    marginBottom: 4,
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '700',
+  },
+  modalScroll: {
+    paddingBottom: 8,
+  },
+  modalPhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 16,
+  },
+  modalAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#eaf4ee',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  modalAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalAvatarInitials: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#126e35',
+  },
+  modalPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  modalPhotoBtnText: {
+    color: '#126e35',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modalLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '600',
+    marginBottom: 6,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#111827',
-    backgroundColor: '#f9fafb',
-    marginBottom: 10,
+    borderColor: '#dce8df',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: '#0a3617',
+    backgroundColor: '#f0faf4',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  modalInputReadonly: {
+    backgroundColor: '#f3f4f6',
+    color: '#6b7280',
+    borderColor: '#e5e7eb',
+  },
+  modalHint: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: -8,
+    marginBottom: 12,
   },
   constituencyBlock: {
+    marginBottom: 8,
+  },
+  constituencyWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 8,
   },
   constituencyChip: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
+    borderColor: '#dce8df',
+    borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#f9fafb',
+    paddingVertical: 8,
+    backgroundColor: '#f0faf4',
   },
   constituencyChipActive: {
     borderColor: '#136e35',
-    backgroundColor: '#e8f7ee',
+    backgroundColor: '#d1fae5',
   },
   constituencyChipText: {
     color: '#374151',
     fontWeight: '600',
     fontSize: 13,
+    maxWidth: 160,
   },
   constituencyChipTextActive: {
     color: '#136e35',
@@ -814,11 +1083,11 @@ const styles = StyleSheet.create({
   avatarPickBtn: {
     borderWidth: 1,
     borderColor: '#86efac',
-    borderRadius: 10,
+    borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
     backgroundColor: '#ecfdf5',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   avatarPickText: {
     color: '#126e35',
@@ -833,30 +1102,32 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eef2ef',
   },
   modalCancel: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   modalCancelText: {
     color: '#374151',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   modalSave: {
     flex: 1,
     backgroundColor: '#126e35',
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   modalSaveText: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   header: {
     flexDirection: 'row',
@@ -891,7 +1162,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: getBottomInset(160),
+    paddingBottom: 24,
+  },
+  signOutFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: getBottomInset(88),
+    backgroundColor: '#f4f9f4',
   },
   profileCard: {
     borderRadius: 32,
@@ -969,6 +1246,25 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 24,
+  },
+  addProfileBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 28,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  addProfileSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
   },
   actionCard: {
     width: (width - 56) / 2, // Account for padding (40) and gap (16)
@@ -1098,14 +1394,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 30,
     paddingVertical: 16,
-    marginBottom: 88,
-    zIndex: 20,
-    elevation: 4,
     gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.02,
-    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
   },
   signOutIcon: {
     width: 20,

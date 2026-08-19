@@ -44,14 +44,13 @@ type QuickAction = {
 type DashboardScreenProps = {
   vehicles: Vehicle[];
   onViewJourney?: () => void;
-  onAddVehicle?: () => void;
   onMyIdentity?: () => void;
-  onGreenSelfie?: () => void;
   onRashiVan?: () => void;
   onNews?: () => void;
   onSupport?: () => void;
   onMitra?: () => void;
   onOfferLand?: () => void;
+  onTreeRequest?: () => void;
   onAboutInitiative?: () => void;
   onAdminPreview?: () => void;
   onNotifications?: () => void;
@@ -122,14 +121,13 @@ async function mapApiLeadersWithMedia(items: Leader[]): Promise<LeaderCard[]> {
 export default function DashboardScreen({
   vehicles,
   onViewJourney,
-  onAddVehicle,
   onMyIdentity,
-  onGreenSelfie,
   onRashiVan,
   onNews,
   onSupport,
   onMitra,
   onOfferLand,
+  onTreeRequest,
   onAboutInitiative,
   onAdminPreview,
   onNotifications,
@@ -806,10 +804,9 @@ export default function DashboardScreen({
         <View style={styles.actionsGridContainer}>
           {(
             [
-              { icon: 'plus', label: 'Add Vehicle', action: onAddVehicle },
               { icon: 'qrcode', label: 'My Identity', action: onMyIdentity },
-              { icon: 'camera-outline', label: 'Green Selfie', action: onGreenSelfie },
               { icon: 'sprout', label: 'Rashi Van', action: onRashiVan },
+              { icon: 'tree', label: 'Tree Request', action: onTreeRequest },
               { icon: 'newspaper-variant-outline', label: 'News', action: onNews },
               { icon: 'account-group-outline', label: 'Mitra', action: onMitra },
               { icon: 'hand-heart-outline', label: 'Offer Land', action: onOfferLand },

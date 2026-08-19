@@ -7,27 +7,24 @@ import ProfileScreen from './ProfileScreen';
 import RanksScreen from './RanksScreen';
 import MapScreen from './MapScreen';
 import JourneyAchievementsScreen from './JourneyAchievementsScreen';
-import AddVehicleScreen from './AddVehicleScreen';
 import PersonIdentityScreen from './PersonIdentityScreen';
-import GreenSelfieScreen from './GreenSelfieScreen';
 import RashiVanScreen from './RashiVanScreen';
 import NewsScreen from './NewsScreen';
 import SupportScreen from './SupportScreen';
 import MitraScreen from './MitraScreen';
 import MitraDashboardScreen from './MitraDashboardScreen';
 import OfferLandScreen from './OfferLandScreen';
+import TreeRequestScreen from './TreeRequestScreen';
 import AboutInitiativeScreen from './AboutInitiativeScreen';
 import AdminPreviewScreen from './AdminPreviewScreen';
 import VehicleDetailScreen from './VehicleDetailScreen';
 import NotificationsScreen from './NotificationsScreen';
 import BottomNav from '../components/BottomNav';
 import {
-  AddedVehicle,
-  createVehicleFromAdded,
   Vehicle,
 } from '../data/vehiclesData';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import {
   ApiError,
@@ -51,14 +48,13 @@ type Tab = 'home' | 'vehicles' | 'map' | 'ranks' | 'profile';
 
 type OverlayScreen =
   | 'journey'
-  | 'addVehicle'
   | 'identity'
-  | 'greenSelfie'
   | 'rashiVan'
   | 'news'
   | 'support'
   | 'mitra'
   | 'offerLand'
+  | 'treeRequest'
   | 'aboutInitiative'
   | 'adminPreview'
   | 'vehicleDetail'
@@ -184,41 +180,29 @@ export default function MainLayout() {
     setOverlay(null);
     setSelectedVehicle(null);
   };
-  const openAddVehicle = () => setOverlay('addVehicle');
   const openVehicleDetail = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
     setOverlay('vehicleDetail');
   };
 
-  const registerVehicle = (added: AddedVehicle) => {
-    setVehicles(prev => {
-      const normalized = added.plate.replace(/\s/g, '').toUpperCase();
-      const exists = prev.some(
-        v => v.plate.replace(/\s/g, '').toUpperCase() === normalized,
-      );
-      if (exists) {
-        return prev;
+  const handleLogout = () => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      }),
+    );
+    void (async () => {
+      try {
+        const refreshToken = await getRefreshToken();
+        await clearSession();
+        if (refreshToken) {
+          void authService.logout(refreshToken).catch(() => undefined);
+        }
+      } catch {
+        await clearSession().catch(() => undefined);
       }
-      return [...prev, createVehicleFromAdded(added)];
-    });
-  };
-
-  const handleAddVehicleComplete = () => {
-    closeOverlay();
-    setActiveTab('vehicles');
-    loadVehicles();
-  };
-
-  const handleLogout = async () => {
-    const refreshToken = await getRefreshToken();
-    await clearSession();
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Login' }],
-    });
-    if (refreshToken) {
-      void authService.logout(refreshToken).catch(() => undefined);
-    }
+    })();
   };
 
   const openNotifications = () => setOverlay('notifications');
@@ -256,14 +240,13 @@ export default function MainLayout() {
           <DashboardScreen
             vehicles={vehicles}
             onViewJourney={() => setOverlay('journey')}
-            onAddVehicle={openAddVehicle}
             onMyIdentity={() => setOverlay('identity')}
-            onGreenSelfie={() => setOverlay('greenSelfie')}
             onRashiVan={() => setOverlay('rashiVan')}
             onNews={() => setOverlay('news')}
             onSupport={() => setOverlay('support')}
             onMitra={() => setOverlay('mitra')}
             onOfferLand={() => setOverlay('offerLand')}
+            onTreeRequest={() => setOverlay('treeRequest')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
             onNotifications={openNotifications}
@@ -273,7 +256,6 @@ export default function MainLayout() {
         return (
           <VehiclesScreen
             vehicles={vehicles}
-            onAddVehicle={openAddVehicle}
             onViewDetails={openVehicleDetail}
             onNotifications={openNotifications}
           />
@@ -300,14 +282,13 @@ export default function MainLayout() {
           <DashboardScreen
             vehicles={vehicles}
             onViewJourney={() => setOverlay('journey')}
-            onAddVehicle={openAddVehicle}
             onMyIdentity={() => setOverlay('identity')}
-            onGreenSelfie={() => setOverlay('greenSelfie')}
             onRashiVan={() => setOverlay('rashiVan')}
             onNews={() => setOverlay('news')}
             onSupport={() => setOverlay('support')}
             onMitra={() => setOverlay('mitra')}
             onOfferLand={() => setOverlay('offerLand')}
+            onTreeRequest={() => setOverlay('treeRequest')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
             onNotifications={openNotifications}
@@ -358,6 +339,13 @@ export default function MainLayout() {
             onNotifications={openNotifications}
           />
         );
+      case 'treeRequest':
+        return (
+          <TreeRequestScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
+          />
+        );
       case 'mitra':
         return (
           <MitraScreen
@@ -392,21 +380,10 @@ export default function MainLayout() {
             onNotifications={openNotifications}
           />
         );
-      case 'greenSelfie':
-        return <GreenSelfieScreen onBack={closeOverlay} />;
       case 'identity':
         return (
           <PersonIdentityScreen
             onBack={closeOverlay}
-            onNotifications={openNotifications}
-          />
-        );
-      case 'addVehicle':
-        return (
-          <AddVehicleScreen
-            onBack={closeOverlay}
-            onRegisterVehicle={registerVehicle}
-            onComplete={handleAddVehicleComplete}
             onNotifications={openNotifications}
           />
         );

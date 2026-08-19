@@ -184,7 +184,7 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
         selectedValue && selectedValue !== 'All' ? selectedValue : undefined;
       const query = {
         scope,
-        limit: 50,
+        limit: 100,
         vidhanSabha:
           scope === 'vidhan-sabha' ? valueFilter : undefined,
         state: scope === 'state' ? valueFilter : undefined,
@@ -253,9 +253,11 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return (
-        item.name.toLowerCase().includes(q) ||
-        item.vehicle.toLowerCase().includes(q) ||
-        item.vidhanSabha.toLowerCase().includes(q)
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.vehicle || '').toLowerCase().includes(q) ||
+        (item.location || '').toLowerCase().includes(q) ||
+        (item.vidhanSabha || '').toLowerCase().includes(q) ||
+        (item.model || '').toLowerCase().includes(q)
       );
     })
     .sort((a, b) => getSortValue(b, sortBy) - getSortValue(a, sortBy));
@@ -301,7 +303,8 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[2]} // Make filters sticky if needed, optional
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* YOUR STANDING CARD */}
         <LinearGradient
@@ -392,6 +395,9 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
                 placeholderTextColor="#9ca3af"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="search"
               />
             </View>
             <Pressable style={styles.sortButton} onPress={() => setSortDrawerVisible(true)}>
@@ -691,6 +697,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#000',
     padding: 0,
+    marginLeft: 8,
+    minWidth: 0,
   },
   sortButton: {
     flexDirection: 'row',
@@ -699,6 +707,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: 16,
     height: 44,
+    flexShrink: 0,
   },
   sortText: {
     fontSize: 14,

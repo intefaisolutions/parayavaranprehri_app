@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, mitrasService, setMitraFlag } from '../api';
+import { ApiError, getStoredPhone, getStoredUser, mitrasService, setMitraFlag } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -48,19 +48,35 @@ export default function MitraScreen({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  useEffect(() => {
+    void (async () => {
+      const [user, phone] = await Promise.all([
+        getStoredUser(),
+        getStoredPhone(),
+      ]);
+      const full = user
+        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        : '';
+      if (full && !name) setName(full);
+      const digits = String(user?.phone || phone || '').replace(/\D/g, '').slice(-10);
+      if (digits && !mobile) setMobile(digits);
+      if (user?.email && !email) setEmail(String(user.email));
+    })();
+  }, []);
+
   const handleGenerate = async () => {
     if (submitting) return;
 
     const formName = name.trim();
-    const formMobile = mobile.trim();
+    const formMobile = mobile.replace(/\D/g, '').slice(-10);
+
+    if (!formName || formMobile.length !== 10) {
+      setErrorMsg('Name and a valid 10-digit mobile are required.');
+      return;
+    }
     const formEmail = email.trim();
     const formProfession = profession.trim();
     const formAddress = address.trim();
-
-    if (!formName || !formMobile) {
-      setErrorMsg('Name and mobile are required.');
-      return;
-    }
 
     setSubmitting(true);
     setErrorMsg('');
@@ -93,6 +109,26 @@ export default function MitraScreen({
       await setMitraFlag(true, mitraId);
       setStep('card');
     } catch (createError) {
+      try {
+        const existing = await mitrasService.getMe();
+        if (existing?.mitraId) {
+          setCardData({
+            name: formName,
+            profession: formProfession,
+            address: formAddress,
+            mobile: formMobile,
+            email: formEmail,
+            membership,
+            mitraId: existing.mitraId,
+          });
+          await setMitraFlag(true, existing.mitraId);
+          setStep('card');
+          setErrorMsg('');
+          return;
+        }
+      } catch {
+        // fall through to original error
+      }
       setErrorMsg(
         createError instanceof ApiError
           ? createError.message
@@ -235,9 +271,11 @@ export default function MitraScreen({
                     {submitting ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={styles.generateBtnText}>
-                        Generate Digital Visiting Card
-                      </Text>
+                  <Text style={styles.generateBtnText}>
+                    {membership === 'free'
+                      ? 'Join as Volunteer'
+                      : 'Generate Digital Visiting Card'}
+                  </Text>
                     )}
                   </LinearGradient>
                 </Pressable>

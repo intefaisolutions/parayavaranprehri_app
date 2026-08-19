@@ -103,7 +103,7 @@ export default function NotificationsScreen({ onBack }: Props) {
           {markingAll ? (
             <ActivityIndicator size="small" color="#126e35" />
           ) : (
-            <Text style={styles.markAll}>Read</Text>
+            <Text style={styles.markAll}>Mark all</Text>
           )}
         </Pressable>
       </View>

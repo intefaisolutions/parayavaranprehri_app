@@ -82,6 +82,13 @@ export const personsService = {
     return apiRequest<PersonStats>('/persons/me/stats');
   },
 
+  updateMe(payload: Partial<PersonPayload>) {
+    return apiRequest<Person>('/persons/me', {
+      method: 'PATCH',
+      body: payload,
+    });
+  },
+
   getById(id: string) {
     return apiRequest<Person>(`/persons/${id}`);
   },
