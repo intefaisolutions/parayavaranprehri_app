@@ -436,20 +436,13 @@ export default function MapScreen({ onNotifications }: MapScreenProps) {
             </View>
           )}
 
-          {!mapsEnabled ? (
-            <View style={styles.configBanner} pointerEvents="none">
-              <Text style={styles.configBannerText}>
-                Google Maps key missing — set GOOGLE_MAPS_API_KEY in backend
-                .env and android/gradle.properties, then rebuild
-              </Text>
-            </View>
-          ) : null}
+
 
           {initialRegion && filteredTrees.length === 0 ? (
             <View style={styles.emptyOverlay} pointerEvents="none">
-              <Text style={styles.emptyTitle}>No tree pins yet</Text>
+              <Text style={styles.emptyTitle}>You haven't planted any trees yet</Text>
               <Text style={styles.emptySubtitle}>
-                Pins appear only for your trees that have GPS coordinates
+                Plant a tree with GPS coordinates to see it here on the map!
               </Text>
             </View>
           ) : null}
