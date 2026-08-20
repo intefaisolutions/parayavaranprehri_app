@@ -12,9 +12,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
-  callCenterService,
-  staticDataService,
-  unwrapList,
+  settingsService,
 } from '../api';
 
 type Props = {
@@ -68,98 +66,51 @@ export default function SupportScreen({ onBack, onNotifications }: Props) {
       let nextMitra: TabSupport = { ...EMPTY_TAB };
 
       try {
-        const info = await staticDataService.getInitiativeInfo();
-        if (info?.support) {
-          const sharedFaq = Array.isArray(info.support.faq)
-            ? info.support.faq.map((item, index) => ({
-                id: `shared-${index + 1}`,
-                question: item.question,
-                answer: item.answer,
-              }))
-            : [];
+        const response = await settingsService.list({ search: 'SUPPORT_CENTER_CONFIG' });
+        // The API returns { items: Setting[], meta: any } or just Setting[] if unwrapList is used
+        const configSetting = Array.isArray(response) 
+            ? response.find((s: any) => s.settingName === 'SUPPORT_CENTER_CONFIG')
+            : (response as any)?.items?.find((s: any) => s.settingName === 'SUPPORT_CENTER_CONFIG');
 
-          nextPrahri = {
-            phone: info.support.prahri?.phone || info.support.phone || '',
-            email: info.support.prahri?.email || info.support.email || '',
-            whatsapp:
-              info.support.prahri?.whatsapp ||
-              info.support.whatsapp ||
-              '+918817678133',
-            faq:
-              info.support.prahri?.faq?.map((item, index) => ({
-                id: `prahri-${index + 1}`,
-                question: item.question,
-                answer: item.answer,
-              })) || sharedFaq,
-          };
-
-          nextMitra = {
-            phone: info.support.mitra?.phone || info.support.phone || '',
-            email: info.support.mitra?.email || info.support.email || '',
-            whatsapp:
-              info.support.mitra?.whatsapp ||
-              info.support.whatsapp ||
-              '+918817678133',
-            faq:
-              info.support.mitra?.faq?.map((item, index) => ({
-                id: `mitra-${index + 1}`,
-                question: item.question,
-                answer: item.answer,
-              })) || sharedFaq,
-          };
+        if (configSetting && configSetting.value) {
+          const parsed = JSON.parse(configSetting.value);
+          
+          if (parsed.prahari) {
+             nextPrahri = {
+               phone: parsed.prahari.phone || '',
+               whatsapp: parsed.prahari.whatsapp || '',
+               email: parsed.prahari.email || '',
+               faq: (parsed.prahari.faqs || []).map((f: any, idx: number) => ({
+                 id: `prahri-${idx}`,
+                 question: f.question,
+                 answer: f.answer,
+               })),
+             };
+          }
+          if (parsed.mitra) {
+             nextMitra = {
+               phone: parsed.mitra.phone || '',
+               whatsapp: parsed.mitra.whatsapp || '',
+               email: parsed.mitra.email || '',
+               faq: (parsed.mitra.faqs || []).map((f: any, idx: number) => ({
+                 id: `mitra-${idx}`,
+                 question: f.question,
+                 answer: f.answer,
+               })),
+             };
+          }
         }
       } catch (error) {
         if (__DEV__) {
           console.warn(
-            error instanceof ApiError ? error.message : 'Support load failed',
+            error instanceof ApiError ? error.message : 'Support config load failed',
           );
         }
       }
 
-      try {
-        const contacts = await callCenterService.list({
-          page: 1,
-          limit: 50,
-          status: 'Active',
-        });
-        const list = unwrapList(contacts as any) as Array<{
-          contactType?: string;
-          contactValue?: string;
-          assignedPerson?: string;
-        }>;
-
-        const pick = (audience: 'prahri' | 'mitra' | 'any', type: string) => {
-          const typed = list.filter(
-            c => (c.contactType || '').toLowerCase() === type.toLowerCase(),
-          );
-          if (audience === 'any') return typed[0]?.contactValue;
-          const match = typed.find(c =>
-            (c.assignedPerson || '').toLowerCase().includes(audience),
-          );
-          return match?.contactValue || typed[0]?.contactValue;
-        };
-
-        const prahriPhone = pick('prahri', 'Phone');
-        const prahriEmail = pick('prahri', 'Email');
-        const mitraPhone = pick('mitra', 'Phone');
-        const mitraEmail = pick('mitra', 'Email');
-
-        if (prahriPhone) nextPrahri.phone = prahriPhone;
-        if (prahriEmail) nextPrahri.email = prahriEmail;
-        if (mitraPhone) nextMitra.phone = mitraPhone;
-        if (mitraEmail) nextMitra.email = mitraEmail;
-        // Official support WhatsApp (fixed)
-        nextPrahri.whatsapp = '+918817678133';
-        nextMitra.whatsapp = '+918817678133';
-      } catch {
-        // CMS initiative-info contacts remain
-        nextPrahri.whatsapp = nextPrahri.whatsapp || '+918817678133';
-        nextMitra.whatsapp = nextMitra.whatsapp || '+918817678133';
-      }
-
       if (mounted) {
-        setPrahri({ ...nextPrahri, whatsapp: '+918817678133' });
-        setMitra({ ...nextMitra, whatsapp: '+918817678133' });
+        setPrahri(nextPrahri);
+        setMitra(nextMitra);
         setExpandedFaq(nextPrahri.faq[0]?.id ?? null);
         setLoading(false);
       }

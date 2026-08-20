@@ -136,7 +136,7 @@ export const reportsService = {
 
 export const settingsService = {
   list(
-    params: { page?: number; limit?: number; category?: string } = {},
+    params: { page?: number; limit?: number; category?: string; search?: string } = {},
   ) {
     return apiRequest(`/settings${toQueryString(params)}`);
   },
