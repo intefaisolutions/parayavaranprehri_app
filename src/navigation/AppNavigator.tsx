@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import MitraRegisterScreen from '../screens/MitraRegisterScreen';
 import OtpScreen from '../screens/OtpScreen';
 import MainLayout from '../screens/MainLayout';
 import { RootStackParamList } from './types';
@@ -77,6 +78,7 @@ export default function AppNavigator() {
         }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="MitraRegister" component={MitraRegisterScreen} />
         <Stack.Screen name="Otp" component={OtpScreen} />
         <Stack.Screen
           name="MainLayout"

@@ -16,7 +16,8 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
-import { ApiError, authService, saveSession } from '../api';
+import { ApiError, authService, saveSession, setMitraFlag } from '../api';
+import { resolveMitraAccess } from '../utils/resolveIsMitra';
 
 const OTP_LENGTH = 4;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -49,12 +50,7 @@ export default function OtpScreen() {
   const showError =
     (touched && otp.length > 0 && !isValid) || errorMsg.length > 0;
 
-  const maskedPhone = useMemo(() => {
-    if (phoneNumber.length !== 10) {
-      return phoneNumber;
-    }
-    return `+91 ${phoneNumber.slice(0, 2)}XXXXX${phoneNumber.slice(7)}`;
-  }, [phoneNumber]);
+
 
   const handleOtpChange = (value: string) => {
     setErrorMsg('');
@@ -79,6 +75,8 @@ export default function OtpScreen() {
         user: result.user,
         phone: phoneNumber,
       });
+      await setMitraFlag(false);
+      await resolveMitraAccess();
       navigation.reset({
         index: 0,
         routes: [{ name: 'MainLayout', params: { phoneNumber } }],
@@ -129,8 +127,6 @@ export default function OtpScreen() {
               <Text style={styles.phoneHighlight}>
                 +91 {phoneNumber.slice(0, 5)} {phoneNumber.slice(5)}
               </Text>
-              {'\n'}
-              ({maskedPhone})
             </Text>
 
             <TouchableOpacity

@@ -448,9 +448,6 @@ export default function DashboardScreen({
               <Text style={styles.contributionValue}>
                 {contributionCo2} kg CO<Text style={styles.subscript}>2</Text> offset
               </Text>
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedText}>✓ Verified</Text>
-              </View>
             </View>
           </View>
         </LinearGradient>
@@ -722,7 +719,7 @@ export default function DashboardScreen({
                 </View>
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
-              <Text style={styles.quickStatLabel}>Trees Assigned</Text>
+              <Text style={styles.quickStatLabel}>Trees Planted</Text>
               <Text style={styles.quickStatValue}>{quickStats.totalTrees}</Text>
             </View>
           </View>
@@ -794,7 +791,7 @@ export default function DashboardScreen({
                 </View>
                 <AppIcon name="chart-line" size={14} color="#9ca3af" />
               </View>
-              <Text style={styles.quickStatLabel}>Vidhan Sabha Rank</Text>
+              <Text style={styles.quickStatLabel}> Your Vidhan Sabha Rank</Text>
               <Text style={styles.quickStatValue}>3</Text>
             </View>
           </View>

@@ -1,4 +1,5 @@
 import { apiRequest, toQueryString } from '../client';
+import { getAccessToken } from '../storage';
 import type { CreateMitraPayload } from '../types';
 
 export const mitrasService = {
@@ -6,7 +7,8 @@ export const mitrasService = {
     return apiRequest('/mitras', { method: 'POST', body: payload });
   },
 
-  selfRegister(payload: CreateMitraPayload) {
+  async selfRegister(payload: CreateMitraPayload) {
+    const token = await getAccessToken();
     return apiRequest<{
       _id: string;
       mitraId: string;
@@ -17,7 +19,11 @@ export const mitrasService = {
       address?: string;
       membership?: string;
       status?: string;
-    }>('/mitras/self-register', { method: 'POST', body: payload });
+    }>('/mitras/self-register', {
+      method: 'POST',
+      body: payload,
+      auth: Boolean(token),
+    });
   },
 
   /** Own Mitra profile (matched by account phone). */

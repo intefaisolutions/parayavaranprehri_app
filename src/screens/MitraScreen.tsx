@@ -16,8 +16,9 @@ import { ApiError, getStoredPhone, getStoredUser, mitrasService, setMitraFlag } 
 
 type Props = {
   onBack: () => void;
-  onRegistered?: (mitraId: string) => void | Promise<void>;
+  onRegistered?: (mitraId: string, mobile?: string) => void | Promise<void>;
   onNotifications?: () => void;
+  guestMode?: boolean;
 };
 
 type MembershipType = 'free' | 'premium';
@@ -36,6 +37,7 @@ export default function MitraScreen({
   onBack,
   onRegistered,
   onNotifications,
+  guestMode = false,
 }: Props) {
   const [step, setStep] = useState<'form' | 'card'>('form');
   const [membership, setMembership] = useState<MembershipType>('premium');
@@ -106,7 +108,9 @@ export default function MitraScreen({
         membership,
         mitraId,
       });
-      await setMitraFlag(true, mitraId);
+      const approved =
+        String(created.status || 'Pending').toLowerCase() === 'approved';
+      await setMitraFlag(approved, mitraId);
       setStep('card');
     } catch (createError) {
       try {
@@ -121,7 +125,10 @@ export default function MitraScreen({
             membership,
             mitraId: existing.mitraId,
           });
-          await setMitraFlag(true, existing.mitraId);
+          await setMitraFlag(
+            String(existing.status || 'Pending').toLowerCase() === 'approved',
+            existing.mitraId,
+          );
           setStep('card');
           setErrorMsg('');
           return;
@@ -141,7 +148,7 @@ export default function MitraScreen({
 
   const openMitraHome = async () => {
     if (cardData?.mitraId && onRegistered) {
-      await onRegistered(cardData.mitraId);
+      await onRegistered(cardData.mitraId, cardData.mobile);
       return;
     }
     onBack();
@@ -167,9 +174,13 @@ export default function MitraScreen({
             Volunteer for India's Net Zero Mission
           </Text>
         </View>
-        <Pressable style={styles.headerBtn} onPress={onNotifications}>
-          <Text style={styles.bellIcon}>🔔</Text>
-        </Pressable>
+        {onNotifications ? (
+          <Pressable style={styles.headerBtn} onPress={onNotifications}>
+            <Text style={styles.bellIcon}>🔔</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.headerBtn} />
+        )}
       </View>
 
       <KeyboardAvoidingView
@@ -357,7 +368,9 @@ export default function MitraScreen({
                 <Pressable
                   style={styles.homeBtn}
                   onPress={() => void openMitraHome()}>
-                  <Text style={styles.homeBtnText}>Open Mitra Home →</Text>
+                  <Text style={styles.homeBtnText}>
+                    {guestMode ? 'Continue to Login →' : 'Open Mitra Home →'}
+                  </Text>
                 </Pressable>
               </>
             )

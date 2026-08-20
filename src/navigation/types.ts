@@ -7,6 +7,7 @@ export type RootStackParamList = {
       }
     | undefined;
   Register: undefined;
+  MitraRegister: undefined;
   Otp: { phoneNumber: string };
   MainLayout: { phoneNumber?: string } | undefined;
 };

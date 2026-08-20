@@ -1,41 +1,60 @@
 import {
+  ApiError,
   getMitraFlag,
   getStoredUser,
   mitrasService,
   setMitraFlag,
 } from '../api';
 
-const MITRA_ROLES = new Set([
-  'field_officer',
-  'plantation_partner',
-]);
+const MITRA_ROLES = new Set(['field_officer', 'plantation_partner']);
 
-const ACTIVE_MITRA_STATUSES = new Set(['Pending', 'Approved', 'pending', 'approved']);
+export type MitraAccess = 'none' | 'pending' | 'approved';
+
+function normalizeStatus(status: string): string {
+  return status.trim().toLowerCase();
+}
 
 /**
- * Decide whether the logged-in user should see Mitra home.
- * 1) Staff roles (field_officer / plantation_partner)
- * 2) Mitra profile via GET /mitras/me (Pending or Approved)
- * 3) Cached flag as last-known (until API confirms)
+ * After OTP / app open: only Approved Mitra (or staff) gets Mitra dashboard.
+ * Pending waits for admin confirmation.
  */
-export async function resolveIsMitra(): Promise<boolean> {
+export async function resolveMitraAccess(): Promise<MitraAccess> {
   const user = await getStoredUser();
   const role = String(user?.role || '').toLowerCase();
   if (MITRA_ROLES.has(role)) {
     await setMitraFlag(true);
-    return true;
+    return 'approved';
   }
 
   try {
     const mitra = await mitrasService.getMe();
-    const status = String(mitra?.status || '');
-    const ok =
-      Boolean(mitra?.mitraId) &&
-      (ACTIVE_MITRA_STATUSES.has(status) || !status);
-    await setMitraFlag(ok, mitra?.mitraId || null);
-    return ok;
-  } catch {
-    // API fail / no profile — fall back to cached flag from prior register
-    return getMitraFlag();
+    if (!mitra?.mitraId) {
+      await setMitraFlag(false);
+      return 'none';
+    }
+    const status = normalizeStatus(String(mitra.status || ''));
+    if (status === 'pending') {
+      await setMitraFlag(false, mitra.mitraId);
+      return 'pending';
+    }
+    if (status === 'approved' || !status) {
+      await setMitraFlag(true, mitra.mitraId);
+      return 'approved';
+    }
+    await setMitraFlag(false);
+    return 'none';
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
+      await setMitraFlag(false);
+      return 'none';
+    }
+    const cached = await getMitraFlag();
+    return cached ? 'approved' : 'none';
   }
+}
+
+/** True only when Mitra dashboard is allowed. */
+export async function resolveIsMitra(): Promise<boolean> {
+  const access = await resolveMitraAccess();
+  return access === 'approved';
 }

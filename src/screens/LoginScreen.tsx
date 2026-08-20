@@ -133,7 +133,7 @@ export default function LoginScreen() {
             </Text>
 
             <Text style={styles.subtitle}>
-              Sign in with the mobile number registered on your vehicle RC.
+              login with your registerd mobile number!
             </Text>
 
             {successMsg ? (
@@ -203,6 +203,13 @@ export default function LoginScreen() {
                 New user?{' '}
                 <Text style={styles.registerLinkBold}>Register</Text>
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('MitraRegister')}
+              style={styles.mitraRegisterLink}>
+              <Text style={styles.mitraRegisterText}>Register Mitra</Text>
             </TouchableOpacity>
 
             <View style={styles.footerRow}>
@@ -396,6 +403,15 @@ const styles = StyleSheet.create({
   registerLinkBold: {
     color: COLORS.gradientStart,
     fontWeight: '700',
+  },
+  mitraRegisterLink: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  mitraRegisterText: {
+    fontSize: 13,
+    color: COLORS.gradientStart,
+    fontWeight: '600',
   },
   footerRow: {
     flexDirection: 'row',

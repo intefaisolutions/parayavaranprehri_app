@@ -13,6 +13,7 @@ import NewsScreen from './NewsScreen';
 import SupportScreen from './SupportScreen';
 import MitraScreen from './MitraScreen';
 import MitraDashboardScreen from './MitraDashboardScreen';
+import MitraPendingScreen from './MitraPendingScreen';
 import OfferLandScreen from './OfferLandScreen';
 import TreeRequestScreen from './TreeRequestScreen';
 import AboutInitiativeScreen from './AboutInitiativeScreen';
@@ -30,9 +31,7 @@ import {
   ApiError,
   authService,
   clearSession,
-  getMitraFlag,
   getRefreshToken,
-  setMitraFlag,
   usersService,
   vehiclesService,
 } from '../api';
@@ -42,7 +41,7 @@ import {
   mapInsuranceListToUi,
   statsFromVehicleTrees,
 } from '../api/mappers';
-import { resolveIsMitra } from '../utils/resolveIsMitra';
+import { resolveMitraAccess, type MitraAccess } from '../utils/resolveIsMitra';
 
 type Tab = 'home' | 'vehicles' | 'map' | 'ranks' | 'profile';
 
@@ -69,24 +68,22 @@ export default function MainLayout() {
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehiclesError, setVehiclesError] = useState('');
   const [isMitra, setIsMitra] = useState(false);
+  const [mitraAccess, setMitraAccess] = useState<MitraAccess>('none');
   const [mitraReady, setMitraReady] = useState(false);
+  const [checkingMitra, setCheckingMitra] = useState(false);
 
   const insets = useSafeAreaInsets();
 
   const refreshMitraStatus = useCallback(async () => {
     try {
-      const cached = await getMitraFlag();
-      setIsMitra(cached);
+      const access = await resolveMitraAccess();
+      setMitraAccess(access);
+      setIsMitra(access === 'approved');
     } catch {
+      setMitraAccess('none');
       setIsMitra(false);
     } finally {
       setMitraReady(true);
-    }
-    try {
-      const ok = await resolveIsMitra();
-      setIsMitra(ok);
-    } catch {
-      // keep cached flag
     }
   }, []);
 
@@ -212,7 +209,7 @@ export default function MainLayout() {
       return (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#136e35" />
-          <Text style={styles.loadingText}>Loading…</Text>
+          <Text style={styles.loadingText}>Signing you in…</Text>
         </View>
       );
     }
@@ -223,6 +220,23 @@ export default function MainLayout() {
           <ActivityIndicator size="large" color="#136e35" />
           <Text style={styles.loadingText}>Loading vehicles…</Text>
         </View>
+      );
+    }
+
+    if (mitraAccess === 'pending') {
+      return (
+        <MitraPendingScreen
+          onLogout={handleLogout}
+          checking={checkingMitra}
+          onCheckAgain={async () => {
+            setCheckingMitra(true);
+            try {
+              await refreshMitraStatus();
+            } finally {
+              setCheckingMitra(false);
+            }
+          }}
+        />
       );
     }
 
@@ -351,9 +365,10 @@ export default function MainLayout() {
           <MitraScreen
             onBack={closeOverlay}
             onNotifications={openNotifications}
-            onRegistered={async mitraId => {
-              await setMitraFlag(true, mitraId);
-              setIsMitra(true);
+            onRegistered={async () => {
+              const access = await resolveMitraAccess();
+              setMitraAccess(access);
+              setIsMitra(access === 'approved');
               setActiveTab('home');
               closeOverlay();
             }}
@@ -415,7 +430,9 @@ export default function MainLayout() {
         </View>
       ) : null}
       {renderScreen()}
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      {mitraAccess === 'pending' ? null : (
+        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      )}
     </View>
   );
 }
