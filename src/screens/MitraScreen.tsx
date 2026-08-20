@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, getStoredPhone, getStoredUser, mitrasService, setMitraFlag } from '../api';
+import { ApiError, mitrasService, setMitraFlag } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -51,19 +51,7 @@ export default function MitraScreen({
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    void (async () => {
-      const [user, phone] = await Promise.all([
-        getStoredUser(),
-        getStoredPhone(),
-      ]);
-      const full = user
-        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
-        : '';
-      if (full && !name) setName(full);
-      const digits = String(user?.phone || phone || '').replace(/\D/g, '').slice(-10);
-      if (digits && !mobile) setMobile(digits);
-      if (user?.email && !email) setEmail(String(user.email));
-    })();
+    // Intentionally left empty to prevent auto-filling of user details
   }, []);
 
   const handleGenerate = async () => {
@@ -215,7 +203,7 @@ export default function MitraScreen({
                   ]}
                   onPress={() => setMembership('free')}>
                   <Text style={styles.membershipIcon}>👥</Text>
-                  <Text style={styles.membershipTitle}>Free Volunteer</Text>
+                  <Text style={styles.membershipTitle}>Volunteer (Unpaid)</Text>
                   <Text style={styles.membershipSub}>Join community drives</Text>
                 </Pressable>
                 <Pressable
@@ -226,7 +214,7 @@ export default function MitraScreen({
                   ]}
                   onPress={() => setMembership('premium')}>
                   <Text style={styles.membershipIcon}>👑</Text>
-                  <Text style={styles.membershipTitle}>Premium Member</Text>
+                  <Text style={styles.membershipTitle}>Employee (Paid)</Text>
                   <Text style={styles.membershipSub}>
                     Mentor & lead initiatives
                   </Text>

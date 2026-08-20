@@ -10,6 +10,9 @@ export type AuthUser = {
   state?: string;
   vidhanSabha?: string;
   avatar?: string;
+  dob?: string;
+  city?: string;
+  pincode?: string;
 };
 
 export type TokenPair = {

@@ -25,6 +25,9 @@ export type UpdateMePayload = {
   district?: string;
   state?: string;
   vidhanSabha?: string;
+  dob?: string;
+  city?: string;
+  pincode?: string;
 };
 
 export type UserQuery = {

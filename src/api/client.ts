@@ -222,6 +222,7 @@ export async function apiUpload<T>(
   path: string,
   file: { uri: string; name: string; type: string },
   query: Record<string, string | undefined> = {},
+  skipRefresh = false,
 ): Promise<T> {
   const token = await getAccessToken();
   const form = new FormData();
@@ -257,6 +258,13 @@ export async function apiUpload<T>(
     );
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  if (response.status === 401 && !skipRefresh) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return apiUpload<T>(path, file, query, true);
+    }
   }
 
   const text = await response.text();

@@ -18,7 +18,10 @@ import {
   getStoredUser,
   rashiPlantRequestsService,
   usersService,
+  treeMastersService,
+  type TreeMasterApi,
 } from '../api';
+import RemoteImage from '../components/RemoteImage';
 
 type Props = {
   onBack: () => void;
@@ -27,20 +30,23 @@ type Props = {
 
 export default function TreeRequestScreen({ onBack, onNotifications }: Props) {
   const [treeName, setTreeName] = useState('');
-  const [location, setLocation] = useState('');
   const [remarks, setRemarks] = useState('');
   const [userName, setUserName] = useState('');
   const [mobile, setMobile] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [done, setDone] = useState(false);
+  
+  const [trees, setTrees] = useState<TreeMasterApi[]>([]);
+  const [loadingTrees, setLoadingTrees] = useState(true);
 
   useEffect(() => {
     void (async () => {
-      const [stored, phone, me] = await Promise.all([
+      const [stored, phone, me, catalogRes] = await Promise.all([
         getStoredUser(),
         getStoredPhone(),
         usersService.getMe().catch(() => null),
+        treeMastersService.catalog({ limit: 50 }).catch(() => null),
       ]);
       const first = String(me?.firstName || stored?.firstName || '');
       const last = String(me?.lastName || stored?.lastName || '');
@@ -50,6 +56,11 @@ export default function TreeRequestScreen({ onBack, onNotifications }: Props) {
         '',
       );
       setMobile(raw.slice(-10));
+      
+      if (catalogRes && catalogRes.docs) {
+        setTrees(catalogRes.docs);
+      }
+      setLoadingTrees(false);
     })();
   }, []);
 
@@ -66,10 +77,9 @@ export default function TreeRequestScreen({ onBack, onNotifications }: Props) {
         rashiName: 'General',
         recommendedTree: treeName.trim(),
         localName: treeName.trim(),
-        remarks: [location.trim(), remarks.trim()].filter(Boolean).join(' · ') || undefined,
+        remarks: remarks.trim() || undefined,
         userName: userName.trim(),
         mobile: mobile.replace(/\D/g, '').slice(-10),
-        district: location.trim() || undefined,
       });
       setDone(true);
     } catch (error) {
@@ -136,22 +146,51 @@ export default function TreeRequestScreen({ onBack, onNotifications }: Props) {
                 placeholderTextColor="#9ca3af"
                 keyboardType="phone-pad"
               />
-              <Text style={styles.label}>Tree / species</Text>
-              <TextInput
-                style={styles.input}
-                value={treeName}
-                onChangeText={setTreeName}
-                placeholder="e.g. Neem, Peepal, Mango"
-                placeholderTextColor="#9ca3af"
-              />
-              <Text style={styles.label}>Location (optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={location}
-                onChangeText={setLocation}
-                placeholder="City, vidhan sabha or address"
-                placeholderTextColor="#9ca3af"
-              />
+              <Text style={styles.label}>Select Tree / Species</Text>
+              {loadingTrees ? (
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator color="#0c4820" />
+                  <Text style={styles.loadingText}>Loading plants...</Text>
+                </View>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.treesScroll}
+                >
+                  {trees.map((t) => {
+                    const isSelected = treeName === t.name;
+                    return (
+                      <Pressable
+                        key={t._id}
+                        style={[
+                          styles.treeCard,
+                          isSelected && styles.treeCardSelected,
+                        ]}
+                        onPress={() => setTreeName(t.name)}
+                      >
+                        <View style={styles.treeImgWrap}>
+                          <RemoteImage
+                            url={t.image}
+                            style={styles.treeImg}
+                            resizeMode="cover"
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.treeTitle,
+                            isSelected && styles.treeTitleSelected,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {t.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
               <Text style={styles.label}>Remarks (optional)</Text>
               <TextInput
                 style={[styles.input, styles.multiline]}
@@ -248,5 +287,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
+  },
+  treesScroll: {
+    paddingVertical: 8,
+    gap: 12,
+  },
+  treeCard: {
+    width: 110,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  treeCardSelected: {
+    borderColor: '#2b964f',
+    backgroundColor: '#f0faf4',
+  },
+  treeImgWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#f3f4f6',
+    marginBottom: 8,
+  },
+  treeImg: {
+    width: '100%',
+    height: '100%',
+  },
+  treeTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4b5563',
+    textAlign: 'center',
+  },
+  treeTitleSelected: {
+    color: '#0a3617',
+    fontWeight: '800',
+  },
+  loadingBox: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 8,
   },
 });

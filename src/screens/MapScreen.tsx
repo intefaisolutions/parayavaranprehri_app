@@ -422,7 +422,7 @@ export default function MapScreen({ onNotifications }: MapScreenProps) {
                     latitude: tree.latitude,
                     longitude: tree.longitude,
                   }}
-                  title={tree.title}
+                  title={`🌳 ${tree.title}`}
                   description={tree.species}
                   tracksViewChanges={Platform.OS === 'ios'}>
                   <TreeMapPin type={tree.type} />

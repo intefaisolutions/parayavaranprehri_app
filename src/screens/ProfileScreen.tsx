@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
 import AppIcon from '../components/AppIcon';
 import { Vehicle } from '../data/vehiclesData';
@@ -107,7 +108,7 @@ export default function ProfileScreen({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [editPhone, setEditPhone] = useState('');
-  const [district, setDistrict] = useState('');
+  const [city, setCity] = useState('');
   const [stateName, setStateName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -122,6 +123,8 @@ export default function ProfileScreen({
   );
   const [sosPhone, setSosPhone] = useState('');
   const [sosWhatsapp, setSosWhatsapp] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>();
+  const [showDobPicker, setShowDobPicker] = useState(false);
 
   const applyUser = (user: Partial<AuthUser> & Record<string, unknown>) => {
     const fn = String(user.firstName || '');
@@ -135,11 +138,13 @@ export default function ProfileScreen({
       setPhone(ph.startsWith('+') ? ph : `+91 ${ph}`);
       setEditPhone(ph.replace(/^\+91\s?/, ''));
     }
-    const d = String(user.district || '');
+    const c = String(user.city || user.district || '');
     const s = String(user.state || '');
-    setDistrict(d);
+    const p = String(user.pincode || '');
+    setCity(c);
     setStateName(s);
-    if (d || s) setLocation([d, s].filter(Boolean).join(', '));
+    setPincode(p);
+    if (c || s) setLocation([c, s].filter(Boolean).join(', '));
     const av = user.avatar ? String(user.avatar) : '';
     setAvatar(av || undefined);
     setAvatarUrl(av);
@@ -147,6 +152,12 @@ export default function ProfileScreen({
     if (sabha) {
       setVidhanSabha(sabha);
       setCommunityTitle(`${sabha} Eco Circle`);
+    }
+    if (user.dob) {
+      const parsed = new Date(user.dob);
+      if (!isNaN(parsed.getTime())) {
+        setDateOfBirth(parsed);
+      }
     }
   };
 
@@ -446,13 +457,16 @@ export default function ProfileScreen({
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
         phone: phoneDigits.length === 10 ? phoneDigits : undefined,
-        district: district.trim() || undefined,
+        district: city.trim() || undefined,
+        city: city.trim() || undefined,
         state: stateName.trim() || undefined,
+        dob: dateOfBirth ? dateOfBirth.toISOString() : undefined,
         avatar:
           avatarValue.startsWith('http') || avatarValue === ''
             ? avatarValue
             : undefined,
         vidhanSabha: vidhanSabha.trim() || undefined,
+        pincode: pincode.trim() || undefined,
       })) as AuthUser & Record<string, unknown>;
       applyUser(updated);
       const personName =
@@ -460,8 +474,8 @@ export default function ProfileScreen({
       const personPayload = {
         name: personName,
         mobile: phoneDigits.length === 10 ? phoneDigits : editPhone.trim(),
-        address: district.trim() || undefined,
-        city: district.trim() || undefined,
+        address: city.trim() || undefined,
+        city: city.trim() || undefined,
         state: stateName.trim() || undefined,
         photo:
           avatarValue.startsWith('http') ? avatarValue : undefined,
@@ -512,8 +526,11 @@ export default function ProfileScreen({
             firstName: String(updated.firstName || stored.firstName),
             lastName: String(updated.lastName || stored.lastName),
             phone: String(updated.phone || stored.phone || ''),
-            district: String(updated.district || ''),
+            district: String(updated.district || updated.city || ''),
+            city: String(updated.city || ''),
             state: String(updated.state || ''),
+            pincode: String(updated.pincode || ''),
+            dob: updated.dob ? String(updated.dob) : undefined,
             avatar: updated.avatar ? String(updated.avatar) : undefined,
           },
         });
@@ -777,6 +794,28 @@ export default function ProfileScreen({
                 value={lastName}
                 onChangeText={setLastName}
               />
+              <Text style={styles.modalLabel}>Date of Birth</Text>
+              <Pressable onPress={() => setShowDobPicker(true)} style={styles.modalInput}>
+                <Text style={{ color: dateOfBirth ? '#0a3617' : '#9ca3af' }}>
+                  {dateOfBirth
+                    ? dateOfBirth.toLocaleDateString('en-GB')
+                    : 'Select Date of Birth'}
+                </Text>
+              </Pressable>
+              {showDobPicker && (
+                <DateTimePicker
+                  value={dateOfBirth || new Date()}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDobPicker(false);
+                    if (event.type === 'set' && selectedDate) {
+                      setDateOfBirth(selectedDate);
+                    }
+                  }}
+                />
+              )}
               <Text style={styles.modalLabel}>Mobile</Text>
               <TextInput
                 style={[styles.modalInput, styles.modalInputReadonly]}
@@ -785,16 +824,13 @@ export default function ProfileScreen({
               />
               <Text style={styles.modalHint}>Linked to your login number</Text>
 
-              <Text style={styles.modalLabel}>District</Text>
+              <Text style={styles.modalLabel}>City</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="District"
+                placeholder="City"
                 placeholderTextColor="#9ca3af"
-                value={district}
-                onChangeText={text => {
-                  setDistrict(text);
-                  setVidhanSabha('');
-                }}
+                value={city}
+                onChangeText={setCity}
               />
               <Text style={styles.modalLabel}>State</Text>
               <TextInput
@@ -802,73 +838,19 @@ export default function ProfileScreen({
                 placeholder="State"
                 placeholderTextColor="#9ca3af"
                 value={stateName}
-                onChangeText={text => {
-                  setStateName(text);
-                  setVidhanSabha('');
-                }}
+                onChangeText={setStateName}
+              />
+              <Text style={styles.modalLabel}>Pincode</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Pincode"
+                placeholderTextColor="#9ca3af"
+                value={pincode}
+                onChangeText={setPincode}
+                keyboardType="numeric"
+                maxLength={6}
               />
 
-              <Text style={styles.modalLabel}>Vidhan Sabha</Text>
-              {district.trim() && stateName.trim() ? (
-                <View style={styles.constituencyBlock}>
-                  {loadingConstituencies ? (
-                    <ActivityIndicator color="#126e35" />
-                  ) : constituencies.length === 0 ? (
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="Type vidhan sabha"
-                      placeholderTextColor="#9ca3af"
-                      value={vidhanSabha}
-                      onChangeText={setVidhanSabha}
-                    />
-                  ) : (
-                    <View style={styles.constituencyWrap}>
-                      {constituencies.map(item => {
-                        const label = constituencyLabel(item);
-                        const selected = vidhanSabha === label;
-                        return (
-                          <Pressable
-                            key={String(item._id || item.id || label)}
-                            style={[
-                              styles.constituencyChip,
-                              selected && styles.constituencyChipActive,
-                            ]}
-                            onPress={() => setVidhanSabha(label)}>
-                            <Text
-                              style={[
-                                styles.constituencyChipText,
-                                selected && styles.constituencyChipTextActive,
-                              ]}
-                              numberOfLines={1}>
-                              {label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Enter district and state, or use GPS"
-                  placeholderTextColor="#9ca3af"
-                  value={vidhanSabha}
-                  onChangeText={setVidhanSabha}
-                />
-              )}
-              <Pressable
-                style={styles.avatarPickBtn}
-                onPress={() => void detectLocation()}
-                disabled={detectingLocation}>
-                {detectingLocation ? (
-                  <ActivityIndicator color="#126e35" />
-                ) : (
-                  <Text style={styles.avatarPickText}>
-                    Detect location from GPS
-                  </Text>
-                )}
-              </Pressable>
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -931,10 +913,10 @@ const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalCard: {
     backgroundColor: '#fff',
@@ -943,7 +925,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: getBottomInset(16),
-    maxHeight: '92%',
+    maxHeight: '85%',
     zIndex: 1,
   },
   modalHandle: {

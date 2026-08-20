@@ -264,6 +264,8 @@ export default function MainLayout() {
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
             onNotifications={openNotifications}
+            onSeeAllVehicles={() => setActiveTab('vehicles')}
+            onSeeAllRanks={() => setActiveTab('ranks')}
           />
         );
       case 'vehicles':
@@ -306,6 +308,8 @@ export default function MainLayout() {
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
             onNotifications={openNotifications}
+            onSeeAllVehicles={() => setActiveTab('vehicles')}
+            onSeeAllRanks={() => setActiveTab('ranks')}
           />
         );
     }

@@ -391,7 +391,7 @@ export default function RanksScreen({ onNotifications }: RanksScreenProps) {
               <AppIcon name="magnify" size={18} color="#6b7280" />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search owner or vidhan sabha"
+                placeholder="Search here..."
                 placeholderTextColor="#9ca3af"
                 value={searchQuery}
                 onChangeText={setSearchQuery}

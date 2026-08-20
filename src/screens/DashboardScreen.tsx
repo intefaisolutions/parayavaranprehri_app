@@ -55,6 +55,8 @@ type DashboardScreenProps = {
   onAboutInitiative?: () => void;
   onAdminPreview?: () => void;
   onNotifications?: () => void;
+  onSeeAllVehicles?: () => void;
+  onSeeAllRanks?: () => void;
 };
 
 type LeaderCard = {
@@ -132,6 +134,8 @@ export default function DashboardScreen({
   onAboutInitiative,
   onAdminPreview,
   onNotifications,
+  onSeeAllVehicles,
+  onSeeAllRanks,
 }: DashboardScreenProps) {
   const [displayName, setDisplayName] = useState('Citizen');
   const [locationLabel, setLocationLabel] = useState('—');
@@ -144,6 +148,7 @@ export default function DashboardScreen({
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [missionTargetYear, setMissionTargetYear] = useState(2047);
   const [contributionCo2, setContributionCo2] = useState(0);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [inspirationName, setInspirationName] = useState('Dr. Ram Patidar');
   const [inspirationPhoto, setInspirationPhoto] = useState<string | undefined>();
   const [inspirationPhotoVersion, setInspirationPhotoVersion] = useState<
@@ -187,6 +192,7 @@ export default function DashboardScreen({
         }
         const loc = [user.district, user.state].filter(Boolean).join(', ');
         if (loc) setLocationLabel(loc);
+        if (user.avatar) setAvatarUrl(user.avatar);
       }
 
       const [meRes, statsRes, progressRes, boardRes, leadersRes, journeyRes, unreadRes] =
@@ -216,6 +222,7 @@ export default function DashboardScreen({
         }
         const loc = [me.district, me.state].filter(Boolean).join(', ');
         if (loc) setLocationLabel(String(loc));
+        if (me.avatar) setAvatarUrl(String(me.avatar));
       }
 
       if (statsRes.status === 'fulfilled' && statsRes.value) {
@@ -423,7 +430,11 @@ export default function DashboardScreen({
           <View style={styles.headerRow}>
             <View style={styles.profileInfo}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{nameInitials}</Text>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{nameInitials}</Text>
+                )}
               </View>
               <View style={styles.nameBlock}>
                 <Text style={styles.greeting}>Namaste 🙏</Text>
@@ -843,7 +854,7 @@ export default function DashboardScreen({
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Your Vehicle Contributions</Text>
-            <Pressable>
+            <Pressable onPress={onSeeAllVehicles}>
               <Text style={styles.seeAllText}>See all ›</Text>
             </Pressable>
           </View>
@@ -895,7 +906,7 @@ export default function DashboardScreen({
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{leaderboardTitle}</Text>
-            <Pressable>
+            <Pressable onPress={onSeeAllRanks}>
               <Text style={styles.seeAllText}>See all ›</Text>
             </Pressable>
           </View>
@@ -1108,6 +1119,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+  avatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
   avatarText: {
     color: '#fff',
     fontWeight: '700',
@@ -1163,7 +1179,8 @@ const styles = StyleSheet.create({
   contributionCard: {
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderRadius: 24,
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
   },
   contributionLabel: {
     color: '#a8d9b9',

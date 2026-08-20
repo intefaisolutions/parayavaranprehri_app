@@ -40,6 +40,8 @@ export type {
   CreateRashiPlantRequestPayload,
   RashiPlantRequestApi,
 } from './services/rashiPlantRequests.service';
+export { treeMastersService } from './services/treeMasters.service';
+export type { TreeMasterApi } from './services/treeMasters.service';
 export {
   personsService,
   personIdentityService,
