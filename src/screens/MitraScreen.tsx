@@ -92,6 +92,8 @@ export default function MitraScreen({
         membership,
       });
 
+      console.log('API SUCCESS:', created);
+
       const mitraId = String(created.mitraId || '').trim();
       if (!mitraId) {
         setErrorMsg(
@@ -113,6 +115,16 @@ export default function MitraScreen({
       await setMitraFlag(approved, mitraId);
       setStep('card');
     } catch (createError) {
+      console.log('API ERROR:', createError);
+
+      if ((createError as any).code === 'ECONNABORTED') {
+        console.log('❌ REQUEST TIMEOUT');
+      }
+
+      if ((createError as Error).message?.toLowerCase().includes('timeout')) {
+        console.log('❌ REQUEST TIMEOUT:', (createError as Error).message);
+      }
+
       try {
         const existing = await mitrasService.getMe();
         if (existing?.mitraId) {

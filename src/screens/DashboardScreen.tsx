@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -803,7 +804,13 @@ export default function DashboardScreen({
             [
               { icon: 'qrcode', label: 'My Identity', action: onMyIdentity },
               { icon: 'sprout', label: 'Rashi Van', action: onRashiVan },
-              { icon: 'tree', label: 'Tree Request', action: onTreeRequest },
+              { icon: 'tree', label: 'Tree Request', action: () => {
+                if (vehicles.length === 0) {
+                  Alert.alert('Insurance Required', 'Please take insurance first to request a plant.');
+                } else if (onTreeRequest) {
+                  onTreeRequest();
+                }
+              } },
               { icon: 'newspaper-variant-outline', label: 'News', action: onNews },
               { icon: 'account-group-outline', label: 'Mitra', action: onMitra },
               { icon: 'hand-heart-outline', label: 'Offer Land', action: onOfferLand },

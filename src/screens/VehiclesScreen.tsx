@@ -45,10 +45,10 @@ export default function VehiclesScreen({
         <View style={styles.listContainer}>
           {vehicles.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No vehicles found in your name</Text>
+              <Text style={styles.emptyTitle}>No vehicles found in your number</Text>
               <Text style={styles.emptySubtitle}>
-                Only vehicles linked to your mobile through insurance are shown
-                here. You cannot register a new vehicle from the app.
+               Only insured vehicles linked to this number are shown here.
+
               </Text>
             </View>
           ) : (

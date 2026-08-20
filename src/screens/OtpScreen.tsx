@@ -69,6 +69,11 @@ export default function OtpScreen() {
         phone: phoneNumber,
         code: otp,
       });
+
+      if (result.user.role === 'super_admin') {
+        throw new ApiError(403, "Super admin can't login here");
+      }
+
       await saveSession({
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,

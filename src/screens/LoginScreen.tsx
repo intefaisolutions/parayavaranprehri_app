@@ -133,7 +133,7 @@ export default function LoginScreen() {
             </Text>
 
             <Text style={styles.subtitle}>
-              login with your registerd mobile number!
+              Login With Your Registerd Mobile Number
             </Text>
 
             {successMsg ? (
@@ -157,7 +157,7 @@ export default function LoginScreen() {
                 value={formattedPhone}
                 onChangeText={handlePhoneChange}
                 onBlur={() => setTouched(true)}
-                placeholder="98260 12345"
+                placeholder="Enter mobile number"
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType="number-pad"
                 maxLength={11}
