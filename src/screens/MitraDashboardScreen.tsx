@@ -777,7 +777,7 @@ export default function MitraDashboardScreen({
         colors={['#e8faef', '#f4f9f4']}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 0.5 }}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       {/* HEADER */}

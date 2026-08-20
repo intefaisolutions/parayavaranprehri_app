@@ -157,7 +157,7 @@ export async function apiRequest<T>(
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
       cache: 'no-store',
-    });
+    } as any);
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {

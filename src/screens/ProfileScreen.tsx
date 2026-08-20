@@ -109,7 +109,9 @@ export default function ProfileScreen({
   const [lastName, setLastName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
   const [stateName, setStateName] = useState('');
+  const [pincode, setPincode] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -126,7 +128,7 @@ export default function ProfileScreen({
   const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>();
   const [showDobPicker, setShowDobPicker] = useState(false);
 
-  const applyUser = (user: Partial<AuthUser> & Record<string, unknown>) => {
+  const applyUser = (user: any) => {
     const fn = String(user.firstName || '');
     const ln = String(user.lastName || '');
     const full = `${fn} ${ln}`.trim();
@@ -916,7 +918,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   modalCard: {
     backgroundColor: '#fff',

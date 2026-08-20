@@ -532,8 +532,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingVertical: 28,
   },
+
   dotGrid: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-evenly',

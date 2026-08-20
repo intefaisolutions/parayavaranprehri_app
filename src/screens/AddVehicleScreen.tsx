@@ -936,7 +936,7 @@ const styles = StyleSheet.create({
     color: '#0a3617',
   },
   otpHidden: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0,
   },
   insuranceRow: {

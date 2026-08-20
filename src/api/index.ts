@@ -57,6 +57,7 @@ export type {
   LeaderboardEntry,
   LeaderboardQuery,
   LeaderboardResponse,
+  LeaderboardScope,
 } from './services/leaderboard.service';
 export { missionProgressService } from './services/missionProgress.service';
 export type { MissionProgress } from './services/missionProgress.service';

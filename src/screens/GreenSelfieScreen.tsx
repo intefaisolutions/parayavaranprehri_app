@@ -132,7 +132,7 @@ export default function GreenSelfieScreen({ onBack }: Props) {
     });
     if (result.didCancel || !result.assets?.[0]?.uri) return;
     const asset = result.assets[0];
-    setPreviewUri(asset.uri);
+    setPreviewUri(asset.uri || null);
     await uploadAndSave(asset.uri!, asset.type, asset.fileName);
   };
 
@@ -145,7 +145,7 @@ export default function GreenSelfieScreen({ onBack }: Props) {
     });
     if (result.didCancel || !result.assets?.[0]?.uri) return;
     const asset = result.assets[0];
-    setPreviewUri(asset.uri);
+    setPreviewUri(asset.uri || null);
     await uploadAndSave(asset.uri!, asset.type, asset.fileName);
   };
 

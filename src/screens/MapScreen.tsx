@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8eee9',
   },
   mapLoading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   mapContentOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   configBanner: {
     position: 'absolute',
@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   emptyOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,

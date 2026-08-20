@@ -95,7 +95,7 @@ export default function PersonIdentityScreen({
           (user ? `${user.firstName} ${user.lastName}`.trim() : 'Citizen');
 
         const vehicleList = Array.isArray(vehicles) ? vehicles : [];
-        const mappedVehicles = vehicleList.map(mapApiVehicleToUi);
+        const mappedVehicles = vehicleList.map(v => mapApiVehicleToUi(v));
         const linked = mappedVehicles.map(v => ({
           id: v.id,
           name: v.name,

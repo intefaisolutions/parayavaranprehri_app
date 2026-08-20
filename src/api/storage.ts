@@ -25,14 +25,12 @@ export async function saveSession(params: {
 }
 
 export async function clearSession(): Promise<void> {
-  await AsyncStorage.multiRemove([
-    KEYS.accessToken,
-    KEYS.refreshToken,
-    KEYS.user,
-    KEYS.phone,
-    KEYS.isMitra,
-    KEYS.mitraId,
-  ]);
+  await AsyncStorage.removeItem(KEYS.accessToken);
+  await AsyncStorage.removeItem(KEYS.refreshToken);
+  await AsyncStorage.removeItem(KEYS.user);
+  await AsyncStorage.removeItem(KEYS.phone);
+  await AsyncStorage.removeItem(KEYS.isMitra);
+  await AsyncStorage.removeItem(KEYS.mitraId);
 }
 
 export async function getAccessToken(): Promise<string | null> {

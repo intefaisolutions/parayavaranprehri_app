@@ -171,7 +171,7 @@ export default function TreeRequestScreen({ onBack, onNotifications }: Props) {
                       >
                         <View style={styles.treeImgWrap}>
                           <RemoteImage
-                            url={t.image}
+                            uri={t.image}
                             style={styles.treeImg}
                             resizeMode="cover"
                           />

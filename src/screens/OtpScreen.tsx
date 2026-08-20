@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     color: COLORS.textDark,
   },
   otpInputOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0,
   },
   errorText: {

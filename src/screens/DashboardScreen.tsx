@@ -706,7 +706,7 @@ export default function DashboardScreen({
               <LinearGradient
                 colors={['rgba(242, 126, 32, 0.08)', 'rgba(255,255,255,0)']}
                 start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
               <View style={styles.quickStatHeader}>
                 <View style={styles.quickStatIconBg}>
@@ -723,7 +723,7 @@ export default function DashboardScreen({
               <LinearGradient
                 colors={['rgba(43, 179, 115, 0.08)', 'rgba(255,255,255,0)']}
                 start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
               <View style={styles.quickStatHeader}>
                 <View style={styles.quickStatIconBg}>
@@ -742,7 +742,7 @@ export default function DashboardScreen({
               <LinearGradient
                 colors={['rgba(0, 150, 255, 0.08)', 'rgba(255,255,255,0)']}
                 start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
               <View style={styles.quickStatHeader}>
                 <View style={styles.quickStatIconBg}>
@@ -759,7 +759,7 @@ export default function DashboardScreen({
               <LinearGradient
                 colors={['rgba(242, 126, 32, 0.08)', 'rgba(255,255,255,0)']}
                 start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
               <View style={styles.quickStatHeader}>
                 <View style={styles.quickStatIconBg}>
@@ -778,7 +778,7 @@ export default function DashboardScreen({
               <LinearGradient
                 colors={['rgba(43, 179, 115, 0.08)', 'rgba(255,255,255,0)']}
                 start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
               <View style={styles.quickStatHeader}>
                 <View style={styles.quickStatIconBg}>
@@ -795,7 +795,7 @@ export default function DashboardScreen({
               <LinearGradient
                 colors={['rgba(242, 126, 32, 0.08)', 'rgba(255,255,255,0)']}
                 start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
               <View style={styles.quickStatHeader}>
                 <View style={styles.quickStatIconBg}>
@@ -1481,12 +1481,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#1b2a40',
   },
   videoImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },
   videoOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.15)', // Light darken
     justifyContent: 'center',
     alignItems: 'center',
