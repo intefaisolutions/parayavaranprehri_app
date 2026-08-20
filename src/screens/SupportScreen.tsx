@@ -18,6 +18,7 @@ import {
 type Props = {
   onBack: () => void;
   onNotifications?: () => void;
+  isMitra?: boolean;
 };
 
 type SupportTab = 'prahri' | 'mitra';
@@ -52,8 +53,8 @@ function openWhatsApp(whatsapp: string) {
   Linking.openURL(`https://wa.me/${digits}`);
 }
 
-export default function SupportScreen({ onBack, onNotifications }: Props) {
-  const [activeTab, setActiveTab] = useState<SupportTab>('prahri');
+export default function SupportScreen({ onBack, onNotifications, isMitra }: Props) {
+  const activeTab: SupportTab = isMitra ? 'mitra' : 'prahri';
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
   const [prahri, setPrahri] = useState<TabSupport>(EMPTY_TAB);
   const [mitra, setMitra] = useState<TabSupport>(EMPTY_TAB);
@@ -167,51 +168,6 @@ export default function SupportScreen({ onBack, onNotifications }: Props) {
           showsVerticalScrollIndicator={false}>
           <View style={styles.adminBadge}>
             <Text style={styles.adminBadgeText}>CMS · Call Center</Text>
-          </View>
-
-          <View style={styles.tabRow}>
-            <Pressable
-              style={styles.tabBtnWrap}
-              onPress={() => setActiveTab('prahri')}>
-              {activeTab === 'prahri' ? (
-                <LinearGradient
-                  colors={['#0c4820', '#2b964f']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={styles.tabBtnActive}>
-                  <Text style={styles.tabTextActive}>
-                    Paryavaran Prahri Support
-                  </Text>
-                </LinearGradient>
-              ) : (
-                <View style={styles.tabBtnInactive}>
-                  <Text style={styles.tabTextInactive}>
-                    Paryavaran Prahri Support
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-            <Pressable
-              style={styles.tabBtnWrap}
-              onPress={() => setActiveTab('mitra')}>
-              {activeTab === 'mitra' ? (
-                <LinearGradient
-                  colors={['#0c4820', '#2b964f']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={styles.tabBtnActive}>
-                  <Text style={styles.tabTextActive}>
-                    Paryavaran Mitra Support
-                  </Text>
-                </LinearGradient>
-              ) : (
-                <View style={styles.tabBtnInactive}>
-                  <Text style={styles.tabTextInactive}>
-                    Paryavaran Mitra Support
-                  </Text>
-                </View>
-              )}
-            </Pressable>
           </View>
 
           <Text style={styles.tabHint}>{tabLabel}</Text>
