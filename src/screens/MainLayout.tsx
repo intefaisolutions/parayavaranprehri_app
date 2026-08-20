@@ -379,6 +379,7 @@ export default function MainLayout() {
           <SupportScreen
             onBack={closeOverlay}
             onNotifications={openNotifications}
+            isMitra={isMitra}
           />
         );
       case 'news':
