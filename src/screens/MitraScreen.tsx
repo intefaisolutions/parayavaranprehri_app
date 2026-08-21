@@ -350,21 +350,6 @@ export default function MitraScreen({
                   </View>
                 </LinearGradient>
 
-                <View style={styles.actionRow}>
-                  <Pressable style={styles.downloadBtn}>
-                    <Text style={styles.downloadBtnText}>⬇ Download</Text>
-                  </Pressable>
-                  <Pressable style={styles.shareBtnWrap}>
-                    <LinearGradient
-                      colors={['#0c4820', '#2b964f']}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={styles.shareBtn}>
-                      <Text style={styles.shareBtnText}>↗ Share</Text>
-                    </LinearGradient>
-                  </Pressable>
-                </View>
-
                 <Pressable
                   style={styles.homeBtn}
                   onPress={() => void openMitraHome()}>
@@ -609,36 +594,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#2b964f',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  downloadBtn: {
-    flex: 1,
-    backgroundColor: '#0c4820',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  downloadBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  shareBtnWrap: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  shareBtn: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  shareBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
   },
   homeBtn: {
     marginTop: 16,

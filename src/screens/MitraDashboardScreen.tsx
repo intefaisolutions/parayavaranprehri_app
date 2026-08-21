@@ -21,6 +21,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
+  API_BASE_URL,
   ApiError,
   certificatesService,
   fieldIssuesService,
@@ -253,7 +254,7 @@ export default function MitraDashboardScreen({
   const [verifyingTree, setVerifyingTree] = useState(false);
   const [tasks, setTasks] = useState<ReturnType<typeof mapApiTasks>>([]);
   const [certificates, setCertificates] = useState<
-    { id: string; title: string; subtitle: string; code?: string }[]
+    { id: string; title: string; subtitle: string; code?: string; recipientName?: string; downloadPath?: string | null }[]
   >([]);
   const [events, setEvents] = useState<
     {
@@ -284,13 +285,17 @@ export default function MitraDashboardScreen({
   const [markingEventId, setMarkingEventId] = useState<string | null>(null);
 
   const mapCerts = (list: any[]) =>
-    list.map((c: any, i: number) => ({
-      id: c._id || String(i + 1),
-      title: c.title || 'Certificate',
-      subtitle: c.description || c.eventName || 'Official recognition',
-      code: c.verificationCode || c.code || '',
-      recipientName: c.recipientName || '',
-    }));
+    list.map((c: any, i: number) => {
+      const code = c.verificationCode || c.code || '';
+      return {
+        id: c._id || String(i + 1),
+        title: c.title || 'Certificate',
+        subtitle: c.description || c.eventName || 'Official recognition',
+        code,
+        recipientName: c.recipientName || '',
+        downloadPath: c.pdfUrl || (code ? `${API_BASE_URL.replace('/api/v1', '')}/certificate/${code}` : null),
+      };
+    });
 
   const mapEvents = (list: MitraEventApi[]) =>
     list.map(event => {
@@ -340,8 +345,15 @@ export default function MitraDashboardScreen({
       }
 
       try {
-        const certs = await certificatesService.listMine();
-        const list = Array.isArray(certs) ? certs : [];
+        const certs: any = await certificatesService.listMine();
+        let list: any[] = [];
+        if (Array.isArray(certs)) {
+          list = certs;
+        } else if (certs && Array.isArray(certs.data)) {
+          list = certs.data;
+        } else if (certs && Array.isArray(certs.items)) {
+          list = certs.items;
+        }
         if (mounted) setCertificates(mapCerts(list));
       } catch {
         // certificates may be empty for this user
@@ -1549,52 +1561,6 @@ export default function MitraDashboardScreen({
         {/* TAB CONTENT (CERTIFICATES) */}
         {activeTab === 'Certificates' && (
           <View style={styles.tabContent}>
-            <View style={styles.verifyBox}>
-              <Text style={styles.verifyTitle}>Verify certificate</Text>
-              <TextInput
-                style={styles.verifyInput}
-                value={verifyCode}
-                onChangeText={setVerifyCode}
-                placeholder="Enter verification code"
-                placeholderTextColor="#9ca3af"
-                autoCapitalize="characters"
-              />
-              <Pressable
-                style={styles.verifyBtn}
-                disabled={verifying || !verifyCode.trim()}
-                onPress={async () => {
-                  setVerifying(true);
-                  setVerifyResult('');
-                  try {
-                    const res: any = await certificatesService.verify(
-                      verifyCode.trim(),
-                    );
-                    setVerifyResult(
-                      res?.title
-                        ? `Valid ✓ — ${res.title}${
-                            res.recipientName ? ` · ${res.recipientName}` : ''
-                          }`
-                        : 'Certificate is valid ✓',
-                    );
-                  } catch (error) {
-                    setVerifyResult(
-                      error instanceof ApiError
-                        ? error.message
-                        : 'Invalid or unknown certificate code',
-                    );
-                  } finally {
-                    setVerifying(false);
-                  }
-                }}>
-                <Text style={styles.verifyBtnText}>
-                  {verifying ? 'Checking…' : 'Verify'}
-                </Text>
-              </Pressable>
-              {verifyResult ? (
-                <Text style={styles.verifyResult}>{verifyResult}</Text>
-              ) : null}
-            </View>
-
             {certificates.map(cert => (
               <View key={cert.id} style={styles.taskCard}>
                 <View style={[styles.taskHeaderRow, { marginBottom: 16 }]}>
@@ -1604,39 +1570,45 @@ export default function MitraDashboardScreen({
                   </View>
                   <View style={styles.taskTitleCol}>
                     <Text style={styles.taskTitle}>{cert.title}</Text>
-                    <Text style={styles.taskSubtitle}>{cert.subtitle}</Text>
+                    <Text style={styles.taskSubtitle}>
+                      {cert.subtitle}
+                      {cert.recipientName ? ` · Issued to: ${cert.recipientName}` : ''}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={styles.taskActionRow}>
+                <View style={[styles.taskActionRow, { gap: 12 }]}>
                   <Pressable
-                    style={[styles.taskBtn, styles.taskBtnStart]}
-                    onPress={() => {
-                      const code = (cert as any).code;
-                      if (code) {
-                        setVerifyCode(code);
-                        setActiveTab('Certificates');
-                        Alert.alert(
-                          'Verification code',
-                          code,
-                          [{ text: 'OK' }],
-                        );
-                      } else {
-                        Alert.alert(
-                          'No code',
-                          'This certificate has no verification code yet.',
-                        );
+                    style={[
+                      styles.taskBtn,
+                      styles.taskBtnOutline,
+                      { borderColor: '#059669', flex: 1, backgroundColor: '#f0fdf4' },
+                    ]}
+                    onPress={async () => {
+                      try {
+                        const path = (cert as any).downloadPath;
+                        if (!path) {
+                          Alert.alert('Not available', 'Certificate PDF is not available yet.');
+                          return;
+                        }
+                        const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+                        await Linking.openURL(url);
+                      } catch {
+                        Alert.alert('Error', 'Failed to open download link.');
                       }
                     }}>
-                    <AppIcon name="shield-check-outline" size={16} color="#fff" />
-                    <Text style={styles.taskBtnText}>Verify</Text>
+                    <AppIcon name="download-outline" size={16} color="#059669" />
+                    <Text
+                      style={[styles.taskBtnOutlineText, { color: '#059669', marginLeft: 6 }]}>
+                      Download
+                    </Text>
                   </Pressable>
 
                   <Pressable
                     style={[
                       styles.taskBtn,
                       styles.taskBtnOutline,
-                      { borderColor: '#e5e7eb' },
+                      { borderColor: '#e5e7eb', flex: 1 },
                     ]}
                     onPress={async () => {
                       try {
@@ -1672,9 +1644,10 @@ export default function MitraDashboardScreen({
                         }
                       }
                     }}>
+                    <AppIcon name="whatsapp" size={16} color="#111827" />
                     <Text
-                      style={[styles.taskBtnOutlineText, { color: '#111827' }]}>
-                      Share WhatsApp
+                      style={[styles.taskBtnOutlineText, { color: '#111827', marginLeft: 6 }]}>
+                      Share
                     </Text>
                   </Pressable>
                 </View>
@@ -2357,49 +2330,6 @@ const styles = StyleSheet.create({
   activityDate: {
     fontSize: 12,
     color: '#6b7280',
-  },
-  verifyBox: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e8eee9',
-  },
-  verifyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0a3617',
-    marginBottom: 10,
-  },
-  verifyInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    paddingHorizontal: 12,
-    fontSize: 14,
-    color: '#111827',
-    marginBottom: 10,
-    backgroundColor: '#f9fafb',
-  },
-  verifyBtn: {
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#126e35',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  verifyBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  verifyResult: {
-    marginTop: 10,
-    fontSize: 13,
-    color: '#0f766e',
-    lineHeight: 18,
   },
   emptyHint: {
     fontSize: 13,

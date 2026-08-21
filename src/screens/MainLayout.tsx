@@ -435,7 +435,7 @@ export default function MainLayout() {
         </View>
       ) : null}
       {renderScreen()}
-      {mitraAccess === 'pending' ? null : (
+      {mitraAccess === 'pending' || isMitra ? null : (
         <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       )}
     </View>
