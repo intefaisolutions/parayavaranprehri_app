@@ -7,6 +7,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import MitraRegisterScreen from '../screens/MitraRegisterScreen';
 import OtpScreen from '../screens/OtpScreen';
 import MainLayout from '../screens/MainLayout';
+import EventDetailScreen from '../screens/EventDetailScreen';
 import { RootStackParamList } from './types';
 import { getAccessToken, getRefreshToken, getStoredPhone } from '../api';
 
@@ -89,6 +90,7 @@ export default function AppNavigator() {
               : undefined
           }
         />
+        <Stack.Screen name="EventDetail" component={EventDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

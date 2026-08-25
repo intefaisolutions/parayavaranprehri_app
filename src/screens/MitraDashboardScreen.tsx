@@ -18,6 +18,8 @@ import {
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from 'react-native-vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
@@ -56,6 +58,71 @@ async function ensureCameraPermission(): Promise<boolean> {
     },
   );
   return granted === PermissionsAndroid.RESULTS.GRANTED;
+}
+
+async function pickMedia(): Promise<PickedPhoto | null> {
+  return new Promise(resolve => {
+    Alert.alert('Attach Media', 'Choose source', [
+      {
+        text: 'Camera (Photo)',
+        onPress: () => {
+          void (async () => {
+            const ok = await ensureCameraPermission();
+            if (!ok) {
+              Alert.alert('Permission needed', 'Camera permission is required.');
+              resolve(null);
+              return;
+            }
+            const result = await launchCamera({
+              mediaType: 'photo',
+              quality: 0.8,
+              saveToPhotos: false,
+            });
+            const asset = result.assets?.[0];
+            if (result.didCancel || !asset?.uri) { resolve(null); return; }
+            resolve({ uri: asset.uri, name: asset.fileName || `media-${Date.now()}.jpg`, type: asset.type || 'image/jpeg' });
+          })();
+        },
+      },
+      {
+        text: 'Camera (Video)',
+        onPress: () => {
+          void (async () => {
+            const ok = await ensureCameraPermission();
+            if (!ok) {
+              Alert.alert('Permission needed', 'Camera permission is required.');
+              resolve(null);
+              return;
+            }
+            const result = await launchCamera({
+              mediaType: 'video',
+              videoQuality: 'low',
+              saveToPhotos: false,
+            });
+            const asset = result.assets?.[0];
+            if (result.didCancel || !asset?.uri) { resolve(null); return; }
+            resolve({ uri: asset.uri, name: asset.fileName || `media-${Date.now()}.mp4`, type: asset.type || 'video/mp4' });
+          })();
+        },
+      },
+      {
+        text: 'Gallery (Any)',
+        onPress: () => {
+          void (async () => {
+            const result = await launchImageLibrary({
+              mediaType: 'mixed',
+              quality: 0.8,
+              selectionLimit: 1,
+            });
+            const asset = result.assets?.[0];
+            if (result.didCancel || !asset?.uri) { resolve(null); return; }
+            resolve({ uri: asset.uri, name: asset.fileName || `media-${Date.now()}`, type: asset.type || 'application/octet-stream' });
+          })();
+        },
+      },
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+    ]);
+  });
 }
 
 async function pickMaintenancePhoto(): Promise<PickedPhoto | null> {
@@ -229,6 +296,166 @@ type LeaderboardRow = {
   title: string;
 };
 
+export const isEventStarted = (dateStr?: string, timeStr?: string): boolean => {
+  if (!dateStr) return true;
+  try {
+    let year: number, month: number, day: number;
+
+    if (dateStr.includes('T')) {
+      const d = new Date(dateStr);
+      year = d.getFullYear();
+      month = d.getMonth();
+      day = d.getDate();
+    } else if (dateStr.includes('-')) {
+      const parts = dateStr.split('-').map(p => parseInt(p, 10));
+      year = parts[0];
+      month = parts[1] - 1;
+      day = parts[2];
+    } else if (dateStr.includes('/')) {
+      const parts = dateStr.split('/').map(p => parseInt(p, 10));
+      if (parts[2] > 1000) {
+        day = parts[0];
+        month = parts[1] - 1;
+        year = parts[2];
+      } else {
+        year = parts[2];
+        month = parts[0] - 1;
+        day = parts[1];
+      }
+    } else {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return true;
+      year = d.getFullYear();
+      month = d.getMonth();
+      day = d.getDate();
+    }
+
+    let hours = 0;
+    let minutes = 0;
+
+    if (timeStr && timeStr.trim().length > 0) {
+      const trimmedTime = timeStr.trim();
+      const match12 = trimmedTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (match12) {
+        let h = parseInt(match12[1], 10);
+        const m = parseInt(match12[2], 10);
+        const ampm = match12[3].toUpperCase();
+        if (ampm === 'PM' && h < 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        hours = h;
+        minutes = m;
+      } else {
+        const match24 = trimmedTime.match(/^(\d{1,2}):(\d{2})$/);
+        if (match24) {
+          hours = parseInt(match24[1], 10);
+          minutes = parseInt(match24[2], 10);
+        }
+      }
+    }
+
+    const eventStartDate = new Date(year, month, day, hours, minutes, 0, 0);
+    return new Date().getTime() >= eventStartDate.getTime();
+  } catch (e) {
+    return true;
+  }
+};
+
+const SAMPLE_DEFAULT_EVENTS = [
+  {
+    id: 'sample-event-1',
+    title: 'Clean & Green City Plantation Drive',
+    eventType: 'Offline',
+    date: '2026-08-25',
+    time: '10:00 AM',
+    endTime: '01:00 PM',
+    location: 'Central City Park, Sector 4',
+    organizer: 'Paryavaran Prahri Team',
+    attendanceMarked: false,
+    offlineDetails: {
+      venue: 'Central City Park',
+      address: 'Gate 2, Sector 4',
+      city: 'Delhi',
+    },
+    description: 'Join us for a massive plantation drive to expand green cover across the sector.',
+  },
+  {
+    id: 'sample-event-2',
+    title: 'Mitra Monthly Orientation & Strategy Briefing',
+    eventType: 'Online',
+    date: '2026-08-28',
+    time: '04:00 PM',
+    endTime: '05:30 PM',
+    location: 'Google Meet',
+    organizer: 'Paryavaran Prahri Admin',
+    attendanceMarked: false,
+    onlineDetails: {
+      platform: 'Google Meet',
+      meetingUrl: 'https://meet.google.com/abc-defg-hij',
+      meetingId: 'abc-defg-hij',
+      passcode: 'mitra2026',
+    },
+    description: 'Monthly briefing for all Paryavaran Mitras to discuss upcoming initiatives and field strategies.',
+  },
+];
+
+const DEFAULT_SAMPLE_TASKS = [
+  {
+    id: 1,
+    apiId: 'task-sample-1',
+    title: 'Weekly Tree Maintenance & Irrigation Check',
+    assigned: '2026-08-20',
+    due: '2026-08-30',
+    priority: 'High',
+    priorityBg: '#ffe4e6',
+    priorityColor: '#e11d48',
+    progress: 50,
+    status: 'progress',
+  },
+  {
+    id: 2,
+    apiId: 'task-sample-2',
+    title: 'Plantation Geo-tagging & Photo Audit',
+    assigned: '2026-08-22',
+    due: '2026-09-05',
+    priority: 'Medium',
+    priorityBg: '#fef08a',
+    priorityColor: '#a16207',
+    progress: 0,
+    status: 'pending',
+  },
+  {
+    id: 3,
+    apiId: 'task-sample-3',
+    title: 'Soil Quality Inspection & Organic Manure Drive',
+    assigned: '2026-08-15',
+    due: '2026-08-24',
+    priority: 'Low',
+    priorityBg: '#dcfce7',
+    priorityColor: '#059669',
+    progress: 100,
+    status: 'completed',
+  },
+];
+
+const DEFAULT_SAMPLE_CERTS = [
+  {
+    id: 'cert-sample-1',
+    title: 'Paryavaran Mitra Excellence Certificate',
+    subtitle: 'Outstanding contribution to Green Canopy Drive 2026',
+    code: 'PM-CERT-2026-001',
+    recipientName: 'Paryavaran Mitra',
+    downloadPath: '/certificate/PM-CERT-2026-001',
+  },
+  {
+    id: 'cert-sample-2',
+    title: 'Tree Guardian Recognition Award',
+    subtitle: 'Successful plantation & maintenance of 50+ healthy trees',
+    code: 'PM-CERT-2026-002',
+    recipientName: 'Paryavaran Mitra',
+    downloadPath: '/certificate/PM-CERT-2026-002',
+  },
+];
+
 type Props = {
   onLogout: () => void;
   onNotifications?: () => void;
@@ -238,6 +465,7 @@ export default function MitraDashboardScreen({
   onLogout,
   onNotifications,
 }: Props) {
+  const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState('Overview');
   const [trees, setTrees] = useState<
     {
@@ -260,11 +488,17 @@ export default function MitraDashboardScreen({
     {
       id: string;
       title: string;
+      eventType?: string;
       date: string;
       time: string;
-      location: string;
+      endTime?: string;
+      location?: string;
       organizer: string;
       attendanceMarked: boolean;
+      offlineDetails?: { venue?: string; address?: string; city?: string };
+      onlineDetails?: { platform?: string; meetingUrl?: string; meetingId?: string; passcode?: string };
+      description?: string;
+      bannerImage?: string;
     }[]
   >([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
@@ -283,6 +517,44 @@ export default function MitraDashboardScreen({
   const [verifyResult, setVerifyResult] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [markingEventId, setMarkingEventId] = useState<string | null>(null);
+
+  // Proof of work state
+  const [proofModalVisible, setProofModalVisible] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
+  const [proofDescription, setProofDescription] = useState('');
+  const [proofMedia, setProofMedia] = useState<PickedPhoto | null>(null);
+  const [submittingProof, setSubmittingProof] = useState(false);
+
+  // Maintenance Form State
+  const [selectedTree, setSelectedTree] = useState('');
+  const [selectedActivity, setSelectedActivity] = useState(ACTIVITY_TYPES[0]);
+  const [remarks, setRemarks] = useState('');
+  const [beforePhoto, setBeforePhoto] = useState<PickedPhoto | null>(null);
+  const [afterPhoto, setAfterPhoto] = useState<PickedPhoto | null>(null);
+  const [savingLog, setSavingLog] = useState(false);
+  const [recentActivities, setRecentActivities] = useState<
+    { id: string; tree: string; activity: string; date: string }[]
+  >([]);
+
+  // Dropdown Modal State
+  const [dropdownType, setDropdownType] = useState<'tree' | 'activity' | 'issueType' | 'issuePriority' | null>(null);
+
+  // Issues Form State
+  const [selectedIssueType, setSelectedIssueType] = useState(ISSUE_TYPES[0]);
+  const [selectedPriority, setSelectedPriority] = useState(PRIORITIES[1]);
+  const [issueDesc, setIssueDesc] = useState('');
+  const [issuePhoto, setIssuePhoto] = useState<PickedPhoto | null>(null);
+  const [submittingIssue, setSubmittingIssue] = useState(false);
+  const [reportedIssues, setReportedIssues] = useState<
+    {
+      id: string;
+      type: string;
+      priority: string;
+      desc: string;
+      date: string;
+      status?: string;
+    }[]
+  >([]);
 
   const mapCerts = (list: any[]) =>
     list.map((c: any, i: number) => {
@@ -306,21 +578,31 @@ export default function MitraDashboardScreen({
       return {
         id: event._id,
         title: event.title,
+        eventType: event.eventType || 'Offline',
         date: dateStr,
         time: event.time || '',
+        endTime: event.endTime || '',
         location: event.location,
         organizer: event.organizer || 'Paryavaran Prahri',
         attendanceMarked: Boolean(event.attendanceMarked),
+        offlineDetails: event.offlineDetails,
+        onlineDetails: event.onlineDetails,
+        description: event.description,
+        bannerImage: event.bannerImage,
       };
     });
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      let fetchedMitraName = '';
       try {
         const mitra = (await mitrasService.getMe()) as any;
         if (mounted && mitra) {
-          if (mitra.name) setMitraName(String(mitra.name));
+          if (mitra.name) {
+            fetchedMitraName = String(mitra.name);
+            setMitraName(fetchedMitraName);
+          }
           setMitraCode(mitra.mitraId || '');
           if (mitra.mobile) setMitraMobile(String(mitra.mobile));
           if (mitra.profession) {
@@ -354,13 +636,20 @@ export default function MitraDashboardScreen({
         } else if (certs && Array.isArray(certs.items)) {
           list = certs.items;
         }
-        if (mounted) setCertificates(mapCerts(list));
+        if (mounted && list.length > 0) {
+          setCertificates(mapCerts(list));
+        } else if (mounted) {
+          setCertificates(DEFAULT_SAMPLE_CERTS);
+        }
       } catch {
-        // certificates may be empty for this user
+        if (mounted) {
+          setCertificates(DEFAULT_SAMPLE_CERTS);
+        }
       }
 
       try {
-        const apiTrees = await treesService.list();
+        const localMitraId = await getStoredMitraId();
+        const apiTrees = await treesService.list(localMitraId || undefined);
         if (mounted && Array.isArray(apiTrees)) {
           const mapped = mapApiTrees(apiTrees);
           setTrees(mapped);
@@ -397,19 +686,35 @@ export default function MitraDashboardScreen({
       }
 
       try {
-        const apiTasks = await tasksService.list({ page: 1, limit: 50 });
+        const apiTasks = await tasksService.list({
+          page: 1,
+          limit: 50,
+          assignedMitra: fetchedMitraName || undefined,
+        });
         const list = unwrapList(apiTasks);
-        if (mounted) setTasks(mapApiTasks(list));
+        if (mounted && list.length > 0) {
+          setTasks(mapApiTasks(list));
+        } else if (mounted) {
+          setTasks(DEFAULT_SAMPLE_TASKS);
+        }
       } catch {
-        // tasks may be empty
+        if (mounted) {
+          setTasks(DEFAULT_SAMPLE_TASKS);
+        }
       }
 
       try {
         const apiEvents = await mitraEventsService.listMine();
         const list = Array.isArray(apiEvents) ? apiEvents : [];
-        if (mounted) setEvents(mapEvents(list));
+        if (mounted && list.length > 0) {
+          setEvents(mapEvents(list));
+        } else if (mounted) {
+          setEvents(SAMPLE_DEFAULT_EVENTS);
+        }
       } catch {
-        // events may be empty
+        if (mounted) {
+          setEvents(SAMPLE_DEFAULT_EVENTS);
+        }
       }
 
       try {
@@ -503,25 +808,57 @@ export default function MitraDashboardScreen({
     }
   };
 
-  const handleCompleteTask = async (taskId: number) => {
-    const task = tasks.find(t => t.id === taskId);
-    setTasks(prev =>
-      prev.map(t =>
-        t.id === taskId
-          ? { ...t, status: 'completed', progress: 100 }
-          : t,
-      ),
-    );
-    if (task?.apiId) {
-      try {
-        await tasksService.updateStatus(task.apiId, 'Completed');
-      } catch (error) {
-        if (__DEV__) {
-          console.warn(
-            error instanceof ApiError ? error.message : 'Task update failed',
-          );
-        }
+  const openProofModal = (taskId: number) => {
+    setCompletingTaskId(taskId);
+    setProofDescription('');
+    setProofMedia(null);
+    setProofModalVisible(true);
+  };
+
+  const submitTaskCompletion = async () => {
+    if (!completingTaskId) return;
+    if (!proofDescription.trim()) {
+      Alert.alert('Required', 'Please describe the work done.');
+      return;
+    }
+    const task = tasks.find(t => t.id === completingTaskId);
+    if (!task) return;
+
+    setSubmittingProof(true);
+    
+    try {
+      let mediaUrl;
+      if (proofMedia) {
+        const uploaded = await uploadsService.upload(proofMedia, 'general');
+        if (uploaded?.url) mediaUrl = uploaded.url;
       }
+      
+      if (task.apiId) {
+        await tasksService.updateStatus(task.apiId, 'Completed', {
+          description: proofDescription,
+          mediaUrl,
+        });
+      }
+
+      setTasks(prev =>
+        prev.map(t =>
+          t.id === completingTaskId
+            ? { ...t, status: 'completed', progress: 100 }
+            : t,
+        ),
+      );
+      setProofModalVisible(false);
+      Alert.alert('Success', 'Task marked as completed!');
+    } catch (error) {
+      if (__DEV__) {
+        console.warn(error instanceof ApiError ? error.message : 'Task update failed');
+      }
+      Alert.alert(
+        'Update failed',
+        error instanceof ApiError ? error.message : 'Could not complete task',
+      );
+    } finally {
+      setSubmittingProof(false);
     }
   };
 
@@ -576,37 +913,6 @@ export default function MitraDashboardScreen({
       setVerifyingTree(false);
     }
   };
-
-  // Maintenance Form State
-  const [selectedTree, setSelectedTree] = useState('');
-  const [selectedActivity, setSelectedActivity] = useState(ACTIVITY_TYPES[0]);
-  const [remarks, setRemarks] = useState('');
-  const [beforePhoto, setBeforePhoto] = useState<PickedPhoto | null>(null);
-  const [afterPhoto, setAfterPhoto] = useState<PickedPhoto | null>(null);
-  const [savingLog, setSavingLog] = useState(false);
-  const [recentActivities, setRecentActivities] = useState<
-    { id: string; tree: string; activity: string; date: string }[]
-  >([]);
-
-  // Dropdown Modal State
-  const [dropdownType, setDropdownType] = useState<'tree' | 'activity' | 'issueType' | 'issuePriority' | null>(null);
-
-  // Issues Form State
-  const [selectedIssueType, setSelectedIssueType] = useState(ISSUE_TYPES[0]);
-  const [selectedPriority, setSelectedPriority] = useState(PRIORITIES[1]);
-  const [issueDesc, setIssueDesc] = useState('');
-  const [issuePhoto, setIssuePhoto] = useState<PickedPhoto | null>(null);
-  const [submittingIssue, setSubmittingIssue] = useState(false);
-  const [reportedIssues, setReportedIssues] = useState<
-    {
-      id: string;
-      type: string;
-      priority: string;
-      desc: string;
-      date: string;
-      status?: string;
-    }[]
-  >([]);
 
   const verifiedCount = trees.filter(t => t.verified).length;
   const missingVerifyCount = Math.max(0, trees.length - verifiedCount);
@@ -747,6 +1053,7 @@ export default function MitraDashboardScreen({
         );
       }
     } catch (error) {
+      setReportedIssues(prev => prev.filter(item => item.id !== optimistic.id));
       Alert.alert(
         'Submit failed',
         error instanceof ApiError
@@ -759,6 +1066,14 @@ export default function MitraDashboardScreen({
   };
 
   const handleMarkAttendance = async (eventId: string) => {
+    const targetEvent = events.find(e => e.id === eventId);
+    if (targetEvent && !isEventStarted(targetEvent.date, targetEvent.time)) {
+      Alert.alert(
+        'Attendance Not Available',
+        `Attendance can only be marked on or after the scheduled date and time of the event (${targetEvent.date}${targetEvent.time ? ' at ' + targetEvent.time : ''}).`,
+      );
+      return;
+    }
     setMarkingEventId(eventId);
     try {
       await mitraEventsService.markAttendance(eventId);
@@ -1110,18 +1425,23 @@ export default function MitraDashboardScreen({
                   </View>
                 ) : (
                   <View style={styles.taskActionRow}>
-                    <Pressable
-                      style={[styles.taskBtn, styles.taskBtnStart]}
-                      onPress={() => handleStartTask(task.id)}
-                    >
-                      <AppIcon name={task.status === 'progress' ? 'update' : 'play-outline'} size={16} color="#fff" />
-                      <Text style={styles.taskBtnText}>
-                        {task.status === 'progress' ? 'Progress' : 'Start'}
-                      </Text>
-                    </Pressable>
+                    {task.status === 'progress' ? (
+                      <View style={[styles.taskBtn, { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#f59e0b' }]}>
+                        <AppIcon name="clock-outline" size={16} color="#d97706" />
+                        <Text style={[styles.taskBtnText, { color: '#d97706' }]}>Pending</Text>
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={[styles.taskBtn, styles.taskBtnStart]}
+                        onPress={() => handleStartTask(task.id)}
+                      >
+                        <AppIcon name="play-outline" size={16} color="#fff" />
+                        <Text style={styles.taskBtnText}>Start</Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       style={[styles.taskBtn, styles.taskBtnMark]}
-                      onPress={() => handleCompleteTask(task.id)}
+                      onPress={() => openProofModal(task.id)}
                     >
                       <AppIcon name="check-circle-outline" size={16} color="#fff" />
                       <Text style={styles.taskBtnText}>Mark Completed</Text>
@@ -1300,25 +1620,49 @@ export default function MitraDashboardScreen({
             {events.map((event) => (
               <View key={event.id} style={styles.taskCard}>
 
-                <View style={[styles.taskHeaderRow, { marginBottom: 16 }]}>
-                  <View style={styles.taskIconBg}>
-                    <AppIcon name="calendar-outline" size={20} color="#059669" />
-                  </View>
-                  <View style={styles.taskTitleCol}>
+                <View style={styles.taskHeaderRow}>
+                  <View style={styles.taskHeaderLeft}>
+                    <View style={[styles.taskIconBg, { backgroundColor: event.eventType === 'Online' ? '#3b82f620' : event.eventType === 'Hybrid' ? '#8b5cf620' : '#10b98120' }]}>
+                      <Icon name="calendar" size={24} color={event.eventType === 'Online' ? '#3b82f6' : event.eventType === 'Hybrid' ? '#8b5cf6' : '#10b981'} />
+                    </View>
+                    <View style={styles.taskTitleCol}>
                     <Text style={styles.taskTitle}>{event.title}</Text>
-                    <Text style={styles.taskSubtitle}>
-                      {event.date} · {event.time} · {event.location}
+                    <Text style={[styles.taskSubtitle, { color: event.eventType === 'Online' ? '#3b82f6' : event.eventType === 'Hybrid' ? '#8b5cf6' : '#10b981', fontFamily: 'Outfit-Medium', marginBottom: 2 }]}>
+                      {event.eventType?.toUpperCase() || 'OFFLINE'}
                     </Text>
-                    <Text style={styles.eventOrganizer}>
-                      By {event.organizer}
+                    <Text style={styles.taskSubtitle}>
+                      {event.date} • {event.time}
+                    </Text>
+                    <Text style={[styles.taskSubtitle, { marginTop: 2 }]}>
+                      {event.eventType === 'Online' 
+                        ? (event.onlineDetails?.platform || 'Online Meeting') 
+                        : event.eventType === 'Hybrid' 
+                        ? `${event.offlineDetails?.city || event.location} + Online`
+                        : (event.offlineDetails?.city || event.location)
+                      }
                     </Text>
                   </View>
                 </View>
+              </View>
 
                 {/* Action Buttons */}
                 <View style={styles.taskActionRow}>
-                  <Pressable style={[styles.taskBtn, styles.taskBtnStart]}>
-                    <Text style={[styles.taskBtnText, { marginLeft: 0 }]}>Join Event</Text>
+                  <Pressable 
+                    style={[styles.taskBtn, styles.taskBtnStart]}
+                    onPress={() =>
+                      navigation.navigate('EventDetail', { 
+                        event,
+                        onMarkAttendance: () => {
+                          setEvents(prev =>
+                            prev.map(e =>
+                              e.id === event.id ? { ...e, attendanceMarked: true } : e,
+                            ),
+                          );
+                        },
+                      })
+                    }
+                  >
+                    <Text style={[styles.taskBtnText, { marginLeft: 0 }]}>View Details</Text>
                   </Pressable>
 
                   {event.attendanceMarked ? (
@@ -1327,13 +1671,34 @@ export default function MitraDashboardScreen({
                     </Pressable>
                   ) : (
                     <Pressable
-                      style={[styles.taskBtn, styles.taskBtnOutline]}
+                      style={[
+                        styles.taskBtn,
+                        isEventStarted(event.date, event.time)
+                          ? styles.taskBtnOutline
+                          : { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', borderWidth: 1 }
+                      ]}
                       disabled={markingEventId === event.id}
-                      onPress={() => handleMarkAttendance(event.id)}>
-                      <Text style={styles.taskBtnOutlineText}>
+                      onPress={() => {
+                        if (!isEventStarted(event.date, event.time)) {
+                          Alert.alert(
+                            'Attendance Not Available',
+                            `Attendance can only be marked on or after the scheduled date and time of the event (${event.date}${event.time ? ' at ' + event.time : ''}).`,
+                          );
+                        } else {
+                          handleMarkAttendance(event.id);
+                        }
+                      }}>
+                      <Text
+                        style={
+                          isEventStarted(event.date, event.time)
+                            ? styles.taskBtnOutlineText
+                            : { fontSize: 13, fontFamily: 'Outfit-Medium', color: '#94a3b8' }
+                        }>
                         {markingEventId === event.id
                           ? 'Marking...'
-                          : 'Mark Attendance'}
+                          : isEventStarted(event.date, event.time)
+                          ? 'Mark Attendance'
+                          : 'Attendance Locked'}
                       </Text>
                     </Pressable>
                   )}
@@ -1657,6 +2022,80 @@ export default function MitraDashboardScreen({
         )}
 
       </ScrollView>
+
+      {/* Proof of Work Modal */}
+      <Modal
+        visible={proofModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProofModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Proof of Work</Text>
+              <Pressable
+                style={styles.modalCloseBtn}
+                onPress={() => setProofModalVisible(false)}>
+                <AppIcon name="close" size={20} color="#6b7280" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Please describe the work done and optionally attach a photo or video as proof.
+            </Text>
+
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.remarksInput}
+                placeholder="Describe the completed task..."
+                placeholderTextColor="#9ca3af"
+                multiline
+                textAlignVertical="top"
+                value={proofDescription}
+                onChangeText={setProofDescription}
+              />
+            </View>
+
+            <Pressable
+              style={styles.uploadBtn}
+              onPress={async () => {
+                const photo = await pickMedia();
+                if (photo) setProofMedia(photo);
+              }}>
+              <AppIcon name="camera-plus" size={20} color="#059669" />
+              <Text style={styles.uploadBtnText}>
+                {proofMedia ? proofMedia.name : 'Attach Photo or Video'}
+              </Text>
+            </Pressable>
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+              <Pressable
+                style={[styles.btnOutline, { flex: 1 }]}
+                onPress={() => setProofModalVisible(false)}>
+                <Text style={styles.btnOutlineText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.btnPrimary,
+                  { flex: 1 },
+                  (!proofDescription.trim() || submittingProof) && styles.btnDisabled,
+                ]}
+                disabled={!proofDescription.trim() || submittingProof}
+                onPress={submitTaskCompletion}>
+                {submittingProof ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <AppIcon name="check-circle" size={18} color="#fff" />
+                    <Text style={styles.btnPrimaryText}>Submit</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
     </View>
   );
@@ -2336,5 +2775,90 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     paddingVertical: 12,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#34d399',
+    borderStyle: 'dashed',
+    backgroundColor: '#f4fbf6',
+  },
+  uploadBtnText: {
+    color: '#059669',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  btnPrimary: {
+    backgroundColor: '#059669',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 100,
+  },
+  btnPrimaryText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  btnDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  btnOutline: {
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 100,
+  },
+  btnOutlineText: {
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

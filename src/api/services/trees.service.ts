@@ -30,8 +30,9 @@ export const treesService = {
     return apiRequest<ApiTree>('/trees', { method: 'POST', body: payload });
   },
 
-  list() {
-    return apiRequest<ApiTree[]>('/trees');
+  list(mitraId?: string) {
+    const qs = mitraId ? `?mitraId=${encodeURIComponent(mitraId)}` : '';
+    return apiRequest<ApiTree[]>(`/trees${qs}`);
   },
 
   listByMobile(mobile: string) {

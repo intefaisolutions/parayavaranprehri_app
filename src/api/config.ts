@@ -10,6 +10,6 @@
  *
  * Paths in services are relative (e.g. `/auth/login` → full `/api/v1/auth/login`).
  */
-export const API_BASE_URL = 'https://admin.paryavaranprahri.com/api/v1';
+export const API_BASE_URL = 'http://192.168.1.15:3000/api/v1';
 
 export const API_TIMEOUT_MS = 20000;

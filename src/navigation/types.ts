@@ -10,4 +10,5 @@ export type RootStackParamList = {
   MitraRegister: undefined;
   Otp: { phoneNumber: string };
   MainLayout: { phoneNumber?: string } | undefined;
+  EventDetail: { event: any; onMarkAttendance?: (eventId: string) => void };
 };

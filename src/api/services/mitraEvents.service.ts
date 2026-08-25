@@ -1,13 +1,28 @@
 import { apiRequest } from '../client';
+import { getStoredMitraId } from '../storage';
 
 export type MitraEventApi = {
   _id: string;
   title: string;
+  eventType?: "Offline" | "Online" | "Hybrid";
   date: string;
   time?: string;
-  location: string;
+  endTime?: string;
+  location?: string;
   organizer?: string;
   description?: string;
+  offlineDetails?: {
+    venue?: string;
+    address?: string;
+    city?: string;
+  };
+  onlineDetails?: {
+    platform?: string;
+    meetingUrl?: string;
+    meetingId?: string;
+    passcode?: string;
+  };
+  bannerImage?: string;
   attendanceMarked?: boolean;
 };
 
@@ -20,10 +35,14 @@ export const mitraEventsService = {
     return apiRequest<MitraEventApi[]>('/mitra-events');
   },
 
-  markAttendance(eventId: string, payload: { notes?: string } = {}) {
+  async markAttendance(eventId: string, payload: { notes?: string; mitraId?: string } = {}) {
+    const localMitraId = await getStoredMitraId();
     return apiRequest(`/mitra-events/${eventId}/attendance`, {
       method: 'POST',
-      body: payload,
+      body: {
+        ...payload,
+        mitraId: payload.mitraId || localMitraId || undefined,
+      },
     });
   },
 };

@@ -25,10 +25,11 @@ export const tasksService = {
       priority?: string;
       status?: string;
       vidhanSabha?: string;
+      assignedMitra?: string;
     } = {},
   ) {
     return apiRequest<TaskItem[] | { items: TaskItem[]; meta: unknown }>(
-      `/tasks${toQueryString(params)}`,
+      `/tasks/me${toQueryString(params)}`,
     );
   },
 
@@ -36,10 +37,14 @@ export const tasksService = {
     return apiRequest<TaskItem>(`/tasks/${id}`);
   },
 
-  updateStatus(id: string, status: 'Pending' | 'In Progress' | 'Completed') {
+  updateStatus(
+    id: string,
+    status: 'Pending' | 'In Progress' | 'Completed',
+    proof?: { description: string; mediaUrl?: string },
+  ) {
     return apiRequest<TaskItem>(`/tasks/${id}/status`, {
       method: 'PATCH',
-      body: { status },
+      body: { status, proofDescription: proof?.description, proofMediaUrl: proof?.mediaUrl },
     });
   },
 };
