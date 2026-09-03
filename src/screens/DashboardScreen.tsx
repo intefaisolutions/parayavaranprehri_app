@@ -107,11 +107,11 @@ function mapApiLeaders(items: Leader[]): LeaderCard[] {
         topBadge: isModi ? 'Inspiration' : undefined,
         achievements: isRam
           ? [
-              'Environmentalist',
-              'World Record Holder',
-              'Biodiversity',
-              'Mission Advisor',
-            ]
+            'Environmentalist',
+            'World Record Holder',
+            'Biodiversity',
+            'Mission Advisor',
+          ]
           : undefined,
       };
     });
@@ -573,12 +573,12 @@ export default function DashboardScreen({
               </View>
 
               <View style={styles.videoThumbnailContainer}>
-                <Image 
+                <Image
                   source={{ uri: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg' }}
                   style={styles.videoImage}
                   resizeMode="cover"
                 />
-                
+
                 {/* Overlay Content (Darken + Play Button) */}
                 <View style={styles.videoOverlay}>
                   <View style={styles.playButton}>
@@ -662,7 +662,7 @@ export default function DashboardScreen({
                     <Text style={styles.inspiredTrophyIcon}>🏆</Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.inspiredInfo}>
                   <Text style={styles.inspiredName}>{inspirationName}</Text>
                   <Text style={styles.inspiredDesc}>{inspirationTitle}</Text>
@@ -815,13 +815,6 @@ export default function DashboardScreen({
             [
               { icon: 'qrcode', label: 'My Identity', action: onMyIdentity },
               { icon: 'sprout', label: 'Rashi Van', action: onRashiVan },
-              { icon: 'tree', label: 'Tree Request', action: () => {
-                if (vehicles.length === 0) {
-                  Alert.alert('Insurance Required', 'Please take insurance first to request a plant.');
-                } else if (onTreeRequest) {
-                  onTreeRequest();
-                }
-              } },
               { icon: 'newspaper-variant-outline', label: 'News', action: onNews },
               { icon: 'account-group-outline', label: 'Mitra', action: onMitra },
               { icon: 'hand-heart-outline', label: 'Offer Land', action: onOfferLand },
@@ -858,7 +851,7 @@ export default function DashboardScreen({
               <Text style={styles.seeAllText}>See all ›</Text>
             </Pressable>
           </View>
-          
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -882,7 +875,7 @@ export default function DashboardScreen({
                 <Text style={styles.vehiclePlates} numberOfLines={1}>
                   {vehicle.plate} · {vehicle.vhId}
                 </Text>
-                
+
                 <View style={styles.vehicleStatsRow}>
                   <View style={styles.vehicleStatPill}>
                     <Text style={styles.vehicleStatLabel}>Trees</Text>
@@ -965,90 +958,90 @@ export default function DashboardScreen({
 
         {/* INITIATIVE LEADERS */}
         {leaders.length > 0 ? (
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Initiative Leaders</Text>
-            <Text style={styles.swipeText}>SWIPE →</Text>
-          </View>
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Initiative Leaders</Text>
+              <Text style={styles.swipeText}>SWIPE →</Text>
+            </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalScrollContent}
-            decelerationRate="fast"
-            snapToInterval={296}
-            snapToAlignment="start"
-            disableIntervalMomentum
-            nestedScrollEnabled>
-            {leaders.map(leader => (
-              <View
-                key={leader.id}
-                style={[
-                  styles.leaderCard,
-                  leader.topBadge === 'Inspiration' && styles.leaderCardInspiration,
-                ]}>
-                {leader.topBadge ? (
-                  <View
-                    style={[
-                      styles.leaderTopBadge,
-                      leader.topBadge === 'Inspiration' &&
-                        styles.leaderInspirationBadge,
-                    ]}>
-                    <Text
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalScrollContent}
+              decelerationRate="fast"
+              snapToInterval={296}
+              snapToAlignment="start"
+              disableIntervalMomentum
+              nestedScrollEnabled>
+              {leaders.map(leader => (
+                <View
+                  key={leader.id}
+                  style={[
+                    styles.leaderCard,
+                    leader.topBadge === 'Inspiration' && styles.leaderCardInspiration,
+                  ]}>
+                  {leader.topBadge ? (
+                    <View
                       style={[
-                        styles.leaderTopBadgeText,
+                        styles.leaderTopBadge,
                         leader.topBadge === 'Inspiration' &&
-                          styles.leaderInspirationBadgeText,
+                        styles.leaderInspirationBadge,
                       ]}>
-                      {leader.topBadge === 'Inspiration'
-                        ? '✨ Inspiration'
-                        : leader.topBadge}
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={styles.leaderAvatarContainer}>
-                  {leader.imageUri ? (
-                    <RemoteImage
-                      uri={leader.imageUri}
-                      version={leader.photoVersion}
-                      style={styles.leaderAvatarImage}
-                    />
-                  ) : (
-                    <View style={[styles.leaderAvatarImage, styles.leaderAvatarFallback]}>
-                      <Text style={styles.leaderAvatarFallbackText}>
-                        {leader.name
-                          .split(/\s+/)
-                          .slice(0, 2)
-                          .map(p => p[0])
-                          .join('')
-                          .toUpperCase() || '?'}
+                      <Text
+                        style={[
+                          styles.leaderTopBadgeText,
+                          leader.topBadge === 'Inspiration' &&
+                          styles.leaderInspirationBadgeText,
+                        ]}>
+                        {leader.topBadge === 'Inspiration'
+                          ? '✨ Inspiration'
+                          : leader.topBadge}
                       </Text>
                     </View>
-                  )}
-                </View>
-                <Text style={styles.leaderName}>{leader.name}</Text>
-                <Text style={styles.leaderTitle}>{leader.title}</Text>
-                <Text style={styles.leaderQuote}>{leader.quote}</Text>
-
-                {leader.achievements ? (
-                  <View style={styles.leaderAchievementsRow}>
-                    {leader.achievements.map((ach, idx) => (
-                      <View key={idx} style={styles.leaderAchievementBadge}>
-                        <Text style={styles.leaderAchievementText}>{ach}</Text>
+                  ) : null}
+                  <View style={styles.leaderAvatarContainer}>
+                    {leader.imageUri ? (
+                      <RemoteImage
+                        uri={leader.imageUri}
+                        version={leader.photoVersion}
+                        style={styles.leaderAvatarImage}
+                      />
+                    ) : (
+                      <View style={[styles.leaderAvatarImage, styles.leaderAvatarFallback]}>
+                        <Text style={styles.leaderAvatarFallbackText}>
+                          {leader.name
+                            .split(/\s+/)
+                            .slice(0, 2)
+                            .map(p => p[0])
+                            .join('')
+                            .toUpperCase() || '?'}
+                        </Text>
                       </View>
-                    ))}
+                    )}
                   </View>
-                ) : null}
+                  <Text style={styles.leaderName}>{leader.name}</Text>
+                  <Text style={styles.leaderTitle}>{leader.title}</Text>
+                  <Text style={styles.leaderQuote}>{leader.quote}</Text>
 
-                <View style={styles.greenMissionBadge}>
-                  <Text style={styles.greenMissionBadgeText}>
-                    {leader.buttonText}
-                  </Text>
+                  {leader.achievements ? (
+                    <View style={styles.leaderAchievementsRow}>
+                      {leader.achievements.map((ach, idx) => (
+                        <View key={idx} style={styles.leaderAchievementBadge}>
+                          <Text style={styles.leaderAchievementText}>{ach}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  <View style={styles.greenMissionBadge}>
+                    <Text style={styles.greenMissionBadgeText}>
+                      {leader.buttonText}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+              ))}
+            </ScrollView>
+          </View>
         ) : null}
 
         {/* FOOTER ACTION CARDS */}
@@ -1067,7 +1060,7 @@ export default function DashboardScreen({
               Net Zero vision & partners
             </Text>
           </Pressable>
-          
+
           <Pressable style={styles.footerActionCard} onPress={onAdminPreview}>
             <MaterialCommunityIcons
               name="shield-check-outline"

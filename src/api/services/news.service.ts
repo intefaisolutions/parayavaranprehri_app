@@ -6,6 +6,7 @@ export type NewsItemApi = {
   content: string;
   category?: string;
   image?: string;
+  url?: string;
   author?: string;
   publishedDate?: string;
   views?: number;

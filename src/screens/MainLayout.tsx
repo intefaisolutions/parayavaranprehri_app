@@ -419,14 +419,6 @@ export default function MainLayout() {
     }
   };
 
-  if (overlay) {
-    return (
-      <View style={[styles.root, { paddingBottom: insets.bottom }]}>
-        {renderOverlay()}
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.root, { paddingBottom: insets.bottom }]}>
       {vehiclesError && activeTab === 'home' ? (
@@ -434,10 +426,17 @@ export default function MainLayout() {
           <Text style={styles.bannerText}>{vehiclesError}</Text>
         </View>
       ) : null}
-      {renderScreen()}
-      {mitraAccess === 'pending' || isMitra ? null : (
-        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-      )}
+      <View style={{ flex: 1, display: overlay ? 'none' : 'flex' }}>
+        {renderScreen()}
+        {mitraAccess === 'pending' || isMitra ? null : (
+          <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+        )}
+      </View>
+      {overlay ? (
+        <View style={StyleSheet.absoluteFill}>
+          {renderOverlay()}
+        </View>
+      ) : null}
     </View>
   );
 }

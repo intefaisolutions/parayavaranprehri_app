@@ -12,6 +12,7 @@ export type NewsItem = {
   timeAgo: string;
   title: string;
   description: string;
+  url?: string;
 };
 
 export const TAG_STYLES: Record<NewsTag, { bg: string; text: string }> = {

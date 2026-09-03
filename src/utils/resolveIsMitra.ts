@@ -58,3 +58,4 @@ export async function resolveIsMitra(): Promise<boolean> {
   const access = await resolveMitraAccess();
   return access === 'approved';
 }
+

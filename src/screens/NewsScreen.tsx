@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,6 +36,7 @@ function mapApiNews(items: NewsItemApi[]): NewsItem[] {
         : '',
     title: item.title,
     description: item.content,
+    url: item.url,
   }));
 }
 
@@ -126,6 +128,22 @@ export default function NewsScreen({ onBack, onNotifications }: Props) {
                   </View>
                   <Text style={styles.cardTitle}>{item.title}</Text>
                   <Text style={styles.cardDescription}>{item.description}</Text>
+                  {item.url ? (
+                    <Pressable
+                      style={styles.linkContainer}
+                      onPress={() => {
+                        const targetUrl =
+                          item.url!.startsWith('http://') ||
+                          item.url!.startsWith('https://')
+                            ? item.url!
+                            : `https://${item.url!}`;
+                        void Linking.openURL(targetUrl).catch(() => {});
+                      }}>
+                      <Text style={styles.linkText} numberOfLines={1}>
+                        🔗 {item.url}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             );
@@ -240,6 +258,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     lineHeight: 18,
+  },
+  linkContainer: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  linkText: {
+    fontSize: 12,
+    color: '#047857',
+    fontWeight: '600',
   },
   centered: {
     flex: 1,
