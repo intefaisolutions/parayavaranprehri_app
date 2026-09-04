@@ -20,6 +20,7 @@ import AboutInitiativeScreen from './AboutInitiativeScreen';
 import AdminPreviewScreen from './AdminPreviewScreen';
 import VehicleDetailScreen from './VehicleDetailScreen';
 import NotificationsScreen from './NotificationsScreen';
+import UserCertificatesScreen from './UserCertificatesScreen';
 import BottomNav from '../components/BottomNav';
 import {
   Vehicle,
@@ -52,11 +53,14 @@ type OverlayScreen =
   | 'news'
   | 'support'
   | 'mitra'
+  | 'mitraDashboard'
+  | 'mitraPending'
   | 'offerLand'
   | 'treeRequest'
   | 'aboutInitiative'
   | 'adminPreview'
   | 'vehicleDetail'
+  | 'userCertificates'
   | 'notifications';
 
 export default function MainLayout() {
@@ -223,42 +227,21 @@ export default function MainLayout() {
       );
     }
 
-    if (mitraAccess === 'pending') {
-      return (
-        <MitraPendingScreen
-          onLogout={handleLogout}
-          checking={checkingMitra}
-          onCheckAgain={async () => {
-            setCheckingMitra(true);
-            try {
-              await refreshMitraStatus();
-            } finally {
-              setCheckingMitra(false);
-            }
-          }}
-        />
-      );
-    }
-
     switch (activeTab) {
       case 'home':
-        if (isMitra) {
-          return (
-            <MitraDashboardScreen
-              onLogout={handleLogout}
-              onNotifications={openNotifications}
-            />
-          );
-        }
         return (
           <DashboardScreen
             vehicles={vehicles}
+            mitraAccess={mitraAccess}
             onViewJourney={() => setOverlay('journey')}
             onMyIdentity={() => setOverlay('identity')}
             onRashiVan={() => setOverlay('rashiVan')}
             onNews={() => setOverlay('news')}
             onSupport={() => setOverlay('support')}
+            onCertificates={() => setOverlay('userCertificates')}
             onMitra={() => setOverlay('mitra')}
+            onOpenMitraDashboard={() => setOverlay('mitraDashboard')}
+            onCheckMitraStatus={() => setOverlay('mitraPending')}
             onOfferLand={() => setOverlay('offerLand')}
             onTreeRequest={() => setOverlay('treeRequest')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
@@ -297,12 +280,16 @@ export default function MainLayout() {
         return (
           <DashboardScreen
             vehicles={vehicles}
+            mitraAccess={mitraAccess}
             onViewJourney={() => setOverlay('journey')}
             onMyIdentity={() => setOverlay('identity')}
             onRashiVan={() => setOverlay('rashiVan')}
             onNews={() => setOverlay('news')}
             onSupport={() => setOverlay('support')}
+            onCertificates={() => setOverlay('userCertificates')}
             onMitra={() => setOverlay('mitra')}
+            onOpenMitraDashboard={() => setOverlay('mitraDashboard')}
+            onCheckMitraStatus={() => setOverlay('mitraPending')}
             onOfferLand={() => setOverlay('offerLand')}
             onTreeRequest={() => setOverlay('treeRequest')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
@@ -378,12 +365,43 @@ export default function MainLayout() {
             }}
           />
         );
+      case 'mitraDashboard':
+        return (
+          <MitraDashboardScreen
+            onBack={closeOverlay}
+            onLogout={handleLogout}
+            onNotifications={openNotifications}
+          />
+        );
+      case 'mitraPending':
+        return (
+          <MitraPendingScreen
+            onBack={closeOverlay}
+            onLogout={handleLogout}
+            checking={checkingMitra}
+            onCheckAgain={async () => {
+              setCheckingMitra(true);
+              try {
+                await refreshMitraStatus();
+              } finally {
+                setCheckingMitra(false);
+              }
+            }}
+          />
+        );
       case 'support':
         return (
           <SupportScreen
             onBack={closeOverlay}
             onNotifications={openNotifications}
             isMitra={isMitra}
+          />
+        );
+      case 'userCertificates':
+        return (
+          <UserCertificatesScreen
+            onBack={closeOverlay}
+            onNotifications={openNotifications}
           />
         );
       case 'news':
@@ -428,9 +446,7 @@ export default function MainLayout() {
       ) : null}
       <View style={{ flex: 1, display: overlay ? 'none' : 'flex' }}>
         {renderScreen()}
-        {mitraAccess === 'pending' || isMitra ? null : (
-          <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-        )}
+        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       </View>
       {overlay ? (
         <View style={StyleSheet.absoluteFill}>

@@ -35,6 +35,11 @@ export { newsService } from './services/news.service';
 export type { NewsItemApi } from './services/news.service';
 export { rashiTreesService } from './services/rashiTrees.service';
 export type { PublicRashiTree } from './services/rashiTrees.service';
+export { astrologyService } from './services/astrology.service';
+export type {
+  CalculateRashiPayload,
+  CalculateRashiResponse,
+} from './services/astrology.service';
 export { rashiPlantRequestsService } from './services/rashiPlantRequests.service';
 export type {
   CreateRashiPlantRequestPayload,

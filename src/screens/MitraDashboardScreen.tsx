@@ -459,11 +459,13 @@ const DEFAULT_SAMPLE_CERTS = [
 type Props = {
   onLogout: () => void;
   onNotifications?: () => void;
+  onBack?: () => void;
 };
 
 export default function MitraDashboardScreen({
   onLogout,
   onNotifications,
+  onBack,
 }: Props) {
   const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState('Overview');
@@ -1110,7 +1112,7 @@ export default function MitraDashboardScreen({
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: getTopInset(16) }]}>
         <View style={styles.headerLeft}>
-          <Pressable style={styles.backButton} onPress={onLogout}>
+          <Pressable style={styles.backButton} onPress={onBack ? onBack : onLogout}>
             <AppIcon name="arrow-left" size={20} color="#111827" />
           </Pressable>
           <View>

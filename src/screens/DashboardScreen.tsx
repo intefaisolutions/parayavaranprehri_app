@@ -44,12 +44,16 @@ type QuickAction = {
 
 type DashboardScreenProps = {
   vehicles: Vehicle[];
+  mitraAccess?: 'none' | 'pending' | 'approved';
   onViewJourney?: () => void;
   onMyIdentity?: () => void;
   onRashiVan?: () => void;
   onNews?: () => void;
   onSupport?: () => void;
+  onCertificates?: () => void;
   onMitra?: () => void;
+  onOpenMitraDashboard?: () => void;
+  onCheckMitraStatus?: () => void;
   onOfferLand?: () => void;
   onTreeRequest?: () => void;
   onAboutInitiative?: () => void;
@@ -72,18 +76,17 @@ type LeaderCard = {
 };
 
 const DEFAULT_INSPIRATION_STATS: ProfileStat[] = [
-  { value: '1,00,000+', label: 'Trees Planted' },
-  { value: '3', label: 'World Records' },
-  { value: '30+', label: 'Awards Received' },
-  { value: '25+', label: 'Years of Service' },
+  { value: '140 Cr+', label: 'Citizens Inspired' },
+  { value: '1B+', label: 'Trees Mission' },
+  { value: 'Mission', label: 'LiFE Initiative' },
+  { value: 'Net Zero', label: 'Vision 2070' },
 ];
 
 const DEFAULT_INSPIRATION_TAGS = [
-  'Environmentalist',
-  'Biodiversity Expert',
-  'Farmer Innovator',
-  'Social Reformer',
-  'World Record Holder',
+  'Mission LiFE',
+  'Ek Ped Maa Ke Naam',
+  'Green Future',
+  'Climate Leader',
 ];
 
 function mapApiLeaders(items: Leader[]): LeaderCard[] {
@@ -92,25 +95,24 @@ function mapApiLeaders(items: Leader[]): LeaderCard[] {
     .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))
     .map(item => {
       const name = item.leaderName.toLowerCase();
-      const isRam = name.includes('ram patidar');
-      const isModi = name.includes('modi');
+      const isModi = name.includes('modi') || name.includes('narendra');
       return {
         id: item._id,
         name: item.leaderName,
         title: item.designation,
         quote: item.organization
           ? `"${item.organization}"`
-          : '"Committed to a greener Bharat."',
+          : '"Committed to a green & sustainable Bharat."',
         buttonText: '🇮🇳 Green Mission',
         imageUri: item.photo || undefined,
         photoVersion: item.updatedAt,
         topBadge: isModi ? 'Inspiration' : undefined,
-        achievements: isRam
+        achievements: isModi
           ? [
-            'Environmentalist',
-            'World Record Holder',
-            'Biodiversity',
-            'Mission Advisor',
+            'Prime Minister',
+            'Mission LiFE',
+            'Ek Ped Maa Ke Naam',
+            'Global Leader',
           ]
           : undefined,
       };
@@ -123,12 +125,16 @@ async function mapApiLeadersWithMedia(items: Leader[]): Promise<LeaderCard[]> {
 
 export default function DashboardScreen({
   vehicles,
+  mitraAccess = 'none',
   onViewJourney,
   onMyIdentity,
   onRashiVan,
   onNews,
   onSupport,
+  onCertificates,
   onMitra,
+  onOpenMitraDashboard,
+  onCheckMitraStatus,
   onOfferLand,
   onTreeRequest,
   onAboutInitiative,
@@ -149,13 +155,15 @@ export default function DashboardScreen({
   const [missionTargetYear, setMissionTargetYear] = useState(2047);
   const [contributionCo2, setContributionCo2] = useState(0);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [inspirationName, setInspirationName] = useState('Dr. Ram Patidar');
+  const [inspirationName, setInspirationName] = useState(
+    'Hon\'ble Prime Minister Shri Narendra Modi Ji',
+  );
   const [inspirationPhoto, setInspirationPhoto] = useState<string | undefined>();
   const [inspirationPhotoVersion, setInspirationPhotoVersion] = useState<
     string | undefined
   >();
   const [inspirationTitle, setInspirationTitle] = useState(
-    'Environmentalist · Biodiversity Conservationist · Social Reformer',
+    'Prime Minister of India · Leader of Mission LiFE · Global Environmental Visionary',
   );
   const [inspirationStats, setInspirationStats] = useState<ProfileStat[]>(
     DEFAULT_INSPIRATION_STATS,
@@ -278,15 +286,16 @@ export default function DashboardScreen({
       if (leadersRes.status === 'fulfilled') {
         const list = unwrapList(leadersRes.value);
         setLeaders(list.length > 0 ? await mapApiLeadersWithMedia(list) : []);
-        const ram = list.find(l =>
-          l.leaderName.toLowerCase().includes('ram patidar'),
+        const modi = list.find(l =>
+          l.leaderName.toLowerCase().includes('modi') ||
+          l.leaderName.toLowerCase().includes('narendra'),
         );
-        if (ram) {
-          setInspirationName(ram.leaderName);
-          if (ram.designation) setInspirationTitle(ram.designation);
-          foundInspirationPhoto = ram.photo;
-          setInspirationPhoto(ram.photo || undefined);
-          setInspirationPhotoVersion(ram.updatedAt);
+        if (modi) {
+          setInspirationName(modi.leaderName);
+          if (modi.designation) setInspirationTitle(modi.designation);
+          foundInspirationPhoto = modi.photo;
+          setInspirationPhoto(modi.photo || undefined);
+          setInspirationPhotoVersion(modi.updatedAt);
         }
       } else {
         setLeaders([]);
@@ -329,15 +338,16 @@ export default function DashboardScreen({
     if (leadersRes.status === 'fulfilled') {
       const list = unwrapList(leadersRes.value);
       setLeaders(list.length > 0 ? mapApiLeaders(list) : []);
-      const ram = list.find(l =>
-        l.leaderName.toLowerCase().includes('ram patidar'),
+      const modi = list.find(l =>
+        l.leaderName.toLowerCase().includes('modi') ||
+        l.leaderName.toLowerCase().includes('narendra'),
       );
-      if (ram) {
-        setInspirationName(ram.leaderName);
-        if (ram.designation) setInspirationTitle(ram.designation);
-        foundInspirationPhoto = ram.photo;
-        setInspirationPhoto(ram.photo || undefined);
-        setInspirationPhotoVersion(ram.updatedAt);
+      if (modi) {
+        setInspirationName(modi.leaderName);
+        if (modi.designation) setInspirationTitle(modi.designation);
+        foundInspirationPhoto = modi.photo;
+        setInspirationPhoto(modi.photo || undefined);
+        setInspirationPhotoVersion(modi.updatedAt);
       }
     }
 
@@ -631,7 +641,7 @@ export default function DashboardScreen({
                 <View style={styles.advisorBadge}>
                   <Text style={styles.advisorBadgeText}>
                     <Text style={{ color: '#000', fontWeight: '900' }}>IN </Text>
-                    National Mission Advisor
+                    Prime Minister of India
                   </Text>
                 </View>
               </View>
@@ -654,7 +664,7 @@ export default function DashboardScreen({
                           .slice(0, 2)
                           .map(p => p[0])
                           .join('')
-                          .toUpperCase() || 'RP'}
+                          .toUpperCase() || 'NM'}
                       </Text>
                     )}
                   </View>
@@ -816,15 +826,19 @@ export default function DashboardScreen({
               { icon: 'qrcode', label: 'My Identity', action: onMyIdentity },
               { icon: 'sprout', label: 'Rashi Van', action: onRashiVan },
               { icon: 'newspaper-variant-outline', label: 'News', action: onNews },
-              { icon: 'account-group-outline', label: 'Mitra', action: onMitra },
               { icon: 'hand-heart-outline', label: 'Offer Land', action: onOfferLand },
               { icon: 'headset', label: 'Support', action: onSupport },
+              { icon: 'certificate-outline', label: 'Certificates', action: onCertificates },
             ] satisfies QuickAction[]
           ).map((action, index) => (
             <Pressable
               key={index}
               style={styles.actionItem}
-              onPress={action.action}>
+              onPress={() => {
+                if (action.action) {
+                  action.action();
+                }
+              }}>
               <View style={styles.actionIconWrapper}>
                 <LinearGradient
                   colors={['#126e35', '#44b969']}
@@ -841,6 +855,79 @@ export default function DashboardScreen({
               <Text style={styles.actionLabel}>{action.label}</Text>
             </Pressable>
           ))}
+        </View>
+
+        {/* PARYAVARAN MITRA SECTION */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.mitraBannerCard}>
+            <LinearGradient
+              colors={['#0c3d2e', '#1a5c45']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.mitraBannerGradient}>
+              <View style={styles.mitraBannerHeader}>
+                <View style={styles.mitraIconBox}>
+                  <Text style={{ fontSize: 22 }}>🌿</Text>
+                </View>
+                <View style={styles.mitraBannerTextCol}>
+                  <Text style={styles.mitraBannerTitle}>Paryavaran Mitra</Text>
+                  {mitraAccess === 'approved' ? (
+                    <View style={styles.mitraBadgeVerified}>
+                      <Text style={styles.mitraBadgeVerifiedText}>✓ Verified Mitra</Text>
+                    </View>
+                  ) : mitraAccess === 'pending' ? (
+                    <View style={styles.mitraBadgePending}>
+                      <Text style={styles.mitraBadgePendingText}>⏳ Verification Pending</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.mitraBannerSub}>
+                      Join Net Zero Bharat Mission as Volunteer or Employee
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {mitraAccess === 'pending' ? (
+                <Text style={styles.mitraPendingMsg}>
+                  Your Paryavaran Mitra registration request has been submitted successfully. Your verification is currently pending approval from the Admin.
+                </Text>
+              ) : null}
+
+              <Pressable
+                style={styles.mitraBannerBtnWrap}
+                onPress={() => {
+                  if (mitraAccess === 'approved') {
+                    if (onOpenMitraDashboard) {
+                      onOpenMitraDashboard();
+                    } else if (onMitra) {
+                      onMitra();
+                    }
+                  } else if (mitraAccess === 'pending') {
+                    if (onCheckMitraStatus) {
+                      onCheckMitraStatus();
+                    } else if (onMitra) {
+                      onMitra();
+                    }
+                  } else {
+                    onMitra?.();
+                  }
+                }}>
+                <LinearGradient
+                  colors={['#f27e20', '#2bb373']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.mitraBannerBtn}>
+                  <Text style={styles.mitraBannerBtnText}>
+                    {mitraAccess === 'approved'
+                      ? 'Open Your Mitra Dashboard 🚀'
+                      : mitraAccess === 'pending'
+                        ? 'Check Request Status ⏳'
+                        : 'Register as Paryavaran Mitra 🌱'}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            </LinearGradient>
+          </View>
         </View>
 
         {/* YOUR VEHICLE CONTRIBUTIONS */}
@@ -1770,12 +1857,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingBottom: 40, // Extra space at bottom
+    paddingBottom: 20,
+    zIndex: 10,
   },
   actionItem: {
     width: (width - 40) / 4, // 4 items per row
     alignItems: 'center',
     marginBottom: 20,
+    zIndex: 10,
   },
   actionIconWrapper: {
     width: 64,
@@ -2109,6 +2198,94 @@ const styles = StyleSheet.create({
   },
   footerActionCardGreen: {
     backgroundColor: '#e6f3eb',
+  },
+  mitraBannerCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  mitraBannerGradient: {
+    padding: 18,
+  },
+  mitraBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  mitraIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  mitraBannerTextCol: {
+    flex: 1,
+  },
+  mitraBannerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  mitraBannerSub: {
+    fontSize: 12,
+    color: '#d1fae5',
+    marginTop: 2,
+  },
+  mitraBadgeVerified: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#10b981',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  mitraBadgeVerifiedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  mitraBadgePending: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  mitraBadgePendingText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  mitraPendingMsg: {
+    fontSize: 13,
+    color: '#e2e8f0',
+    lineHeight: 18,
+    marginBottom: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    padding: 10,
+    borderRadius: 10,
+  },
+  mitraBannerBtnWrap: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  mitraBannerBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mitraBannerBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
   },
   footerActionIcon: {
     fontSize: 24,

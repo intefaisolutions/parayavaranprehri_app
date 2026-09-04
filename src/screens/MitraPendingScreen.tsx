@@ -6,28 +6,36 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 type Props = {
   onLogout: () => void;
   onCheckAgain: () => void | Promise<void>;
+  onBack?: () => void;
   checking?: boolean;
 };
 
 export default function MitraPendingScreen({
   onLogout,
   onCheckAgain,
+  onBack,
   checking = false,
 }: Props) {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: getTopInset(16) }]}>
-        <Text style={styles.headerTitle}>Paryavaran Mitra</Text>
-        <Text style={styles.headerSubtitle}>Awaiting admin confirmation</Text>
+        {onBack ? (
+          <Pressable style={styles.backBtn} onPress={onBack}>
+            <Text style={styles.backIcon}>←</Text>
+          </Pressable>
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Paryavaran Mitra</Text>
+          <Text style={styles.headerSubtitle}>Awaiting Admin Confirmation</Text>
+        </View>
       </View>
 
       <View style={[styles.body, { paddingBottom: getBottomInset(24) }]}>
         <View style={styles.card}>
           <Text style={styles.icon}>⏳</Text>
-          <Text style={styles.title}>Request pending</Text>
+          <Text style={styles.title}>Registration Pending</Text>
           <Text style={styles.message}>
-            Admin has not confirmed your request. You will get the Mitra
-            dashboard after your application is verified.
+            Your Paryavaran Mitra registration request has been submitted successfully. Your verification is currently pending approval from the Admin.
           </Text>
 
           <Pressable
@@ -42,10 +50,16 @@ export default function MitraPendingScreen({
               {checking ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.checkBtnText}>Check status</Text>
+                <Text style={styles.checkBtnText}>Check Status</Text>
               )}
             </LinearGradient>
           </Pressable>
+
+          {onBack ? (
+            <Pressable style={styles.backDashboardBtn} onPress={onBack}>
+              <Text style={styles.backDashboardText}>← Return to User Dashboard</Text>
+            </Pressable>
+          ) : null}
 
           <Pressable style={styles.logoutBtn} onPress={onLogout}>
             <Text style={styles.logoutText}>Sign out</Text>
@@ -64,6 +78,22 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eef2ef',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backIcon: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
   },
   headerTitle: {
     fontSize: 20,
@@ -122,6 +152,16 @@ const styles = StyleSheet.create({
   logoutText: {
     color: '#e11d48',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  backDashboardBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 4,
+  },
+  backDashboardText: {
+    color: '#059669',
+    fontSize: 14,
     fontWeight: '700',
   },
 });

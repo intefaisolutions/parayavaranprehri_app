@@ -2,19 +2,21 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
-import { RevealedTree } from '../data/rashiVanData';
+import { RevealedTree, RashiKey } from '../data/rashiVanData';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
   PublicRashiTree,
+  astrologyService,
   getStoredPhone,
   getStoredUser,
   rashiPlantRequestsService,
@@ -27,26 +29,69 @@ type Props = {
   onNotifications?: () => void;
 };
 
-const RASHI_OPTIONS = [
-  { label: 'Mesh (Aries)', apiValue: 'Aries', key: 'mesh' },
-  { label: 'Vrishabh (Taurus)', apiValue: 'Taurus', key: 'vrishabh' },
-  { label: 'Mithun (Gemini)', apiValue: 'Gemini', key: 'mithun' },
-  { label: 'Kark (Cancer)', apiValue: 'Cancer', key: 'kark' },
-  { label: 'Singh (Leo)', apiValue: 'Leo', key: 'singh' },
-  { label: 'Kanya (Virgo)', apiValue: 'Virgo', key: 'kanya' },
-  { label: 'Tula (Libra)', apiValue: 'Libra', key: 'tula' },
-  { label: 'Vrishchik (Scorpio)', apiValue: 'Scorpio', key: 'vrishchik' },
-  { label: 'Dhanu (Sagittarius)', apiValue: 'Sagittarius', key: 'dhanu' },
-  { label: 'Makar (Capricorn)', apiValue: 'Capricorn', key: 'makar' },
-  { label: 'Kumbh (Aquarius)', apiValue: 'Aquarius', key: 'kumbh' },
-  { label: 'Meen (Pisces)', apiValue: 'Pisces', key: 'meen' },
-] as const;
+const formatYYYYMMDD = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
-type RashiOption = (typeof RASHI_OPTIONS)[number];
+const formatHHMMSS = (d: Date): string => {
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+};
+
+const formatTime12h = (d: Date): string => {
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  h = h ? h : 12;
+  return `${h}:${m} ${ampm}`;
+};
+
+const RASHI_KEY_MAP: Record<string, RashiKey> = {
+  mesh: 'mesh',
+  aries: 'mesh',
+  vrishabh: 'vrishabh',
+  taurus: 'vrishabh',
+  mithun: 'mithun',
+  gemini: 'mithun',
+  kark: 'kark',
+  cancer: 'kark',
+  singh: 'singh',
+  leo: 'singh',
+  kanya: 'kanya',
+  virgo: 'kanya',
+  tula: 'tula',
+  libra: 'tula',
+  vrishchik: 'vrishchik',
+  scorpio: 'vrishchik',
+  dhanu: 'dhanu',
+  sagittarius: 'dhanu',
+  makar: 'makar',
+  capricorn: 'makar',
+  kumbh: 'kumbh',
+  aquarius: 'kumbh',
+  meen: 'meen',
+  pisces: 'meen',
+};
+
+const getRashiKey = (rashiName: string): RashiKey => {
+  const normalized = rashiName.trim().toLowerCase();
+  return RASHI_KEY_MAP[normalized] || 'mesh';
+};
 
 export default function RashiVanScreen({ onBack, onNotifications }: Props) {
-  const [selectedRashi, setSelectedRashi] = useState<RashiOption | null>(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dob, setDob] = useState<Date | null>(null);
+  const [showDobPicker, setShowDobPicker] = useState(false);
+  const [birthTime, setBirthTime] = useState<Date | null>(null);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [birthPlace, setBirthPlace] = useState('');
+  const [calculatedRashiName, setCalculatedRashiName] = useState('');
+
   const [revealed, setRevealed] = useState<RevealedTree | null>(null);
   const [apiTree, setApiTree] = useState<PublicRashiTree | null>(null);
   const [revealing, setRevealing] = useState(false);
@@ -72,8 +117,20 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
 
   const handleReveal = async () => {
     if (revealing) return;
-    if (!selectedRashi) {
-      setErrorMsg('Please select your Rashi.');
+    if (!dob) {
+      setErrorMsg('Please select your Date of Birth.');
+      setRevealed(null);
+      setApiTree(null);
+      return;
+    }
+    if (!birthTime) {
+      setErrorMsg('Please select your Birth Time.');
+      setRevealed(null);
+      setApiTree(null);
+      return;
+    }
+    if (!birthPlace.trim()) {
+      setErrorMsg('Please enter your Birth Place.');
       setRevealed(null);
       setApiTree(null);
       return;
@@ -81,8 +138,41 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
 
     setErrorMsg('');
     setRevealing(true);
+
+    const dateOfBirthStr = formatYYYYMMDD(dob);
+    const timeOfBirthStr = formatHHMMSS(birthTime);
+    const birthPlaceStr = birthPlace.trim();
+
     try {
-      const api = await rashiTreesService.byRashi(selectedRashi.apiValue);
+      let rashiNameCalculated = '';
+      let api: PublicRashiTree | null = null;
+
+      // 1. Try backend astrology Rashi calculation API
+      try {
+        const astRes = await astrologyService.calculateRashi({
+          dateOfBirth: dateOfBirthStr,
+          timeOfBirth: timeOfBirthStr,
+          birthPlace: birthPlaceStr,
+        });
+        rashiNameCalculated = astRes.rashiEnglish || astRes.rashi || '';
+      } catch {
+        rashiNameCalculated = '';
+      }
+
+      if (rashiNameCalculated) {
+        try {
+          api = await rashiTreesService.byRashi(rashiNameCalculated);
+        } catch {
+          api = null;
+        }
+      }
+
+      // 2. Fallback to auto-calculation by DOB endpoint if needed
+      if (!api) {
+        api = await rashiTreesService.byDob(dateOfBirthStr);
+        rashiNameCalculated = api.rashi || rashiNameCalculated || 'Sacred Rashi';
+      }
+
       const primary =
         api.trees && api.trees.length > 0 ? api.trees[0] : undefined;
       const significance =
@@ -115,11 +205,13 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
             ? primary.harmonyBonus
             : undefined;
 
+      const finalRashiName = rashiNameCalculated || api.rashi || 'Rashi';
+      setCalculatedRashiName(finalRashiName);
       setApiTree(api);
       setRevealed({
         rashi: {
-          key: selectedRashi.key,
-          name: selectedRashi.label.split(' (')[0],
+          key: getRashiKey(finalRashiName),
+          name: api.rashiHindi ? `${api.rashi} (${api.rashiHindi})` : finalRashiName,
           deity,
           nakshatras,
           trees: [],
@@ -139,7 +231,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
       setErrorMsg(
         error instanceof ApiError
           ? error.message
-          : 'Could not load sacred tree for this Rashi.',
+          : 'Could not calculate Rashi and load sacred tree.',
       );
     } finally {
       setRevealing(false);
@@ -147,7 +239,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
   };
 
   const handlePlantRequest = async () => {
-    if (planting || !revealed || !selectedRashi) return;
+    if (planting || !revealed) return;
 
     setPlanting(true);
     try {
@@ -170,14 +262,14 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
       }
 
       await rashiPlantRequestsService.create({
-        rashiName: selectedRashi.apiValue,
+        rashiName: calculatedRashiName || apiTree?.rashi || 'Rashi',
         rashiNameHindi: apiTree?.rashiHindi,
         recommendedTree: revealed.tree.name,
         scientificName: apiTree?.scientificName,
         localName: apiTree?.localName,
         treeDescription: apiTree?.description || revealed.tree.significance,
         benefits: apiTree?.benefits,
-        remarks: `Sacred Tree request from Rashi Van · ${selectedRashi.label}`,
+        remarks: `Sacred Tree request from Rashi Van · ${calculatedRashiName || apiTree?.rashi}`,
         userName,
         mobile,
         email: user?.email,
@@ -266,24 +358,89 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
         </LinearGradient>
 
         <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Select your Rashi</Text>
+          <Text style={styles.formTitle}>Calculate your Rashi</Text>
           <Text style={styles.formSubtitle}>
-            For Vedic Rashi + Nakshatra alignment
+            Enter your birth details for Vedic Rashi & Nakshatra alignment
           </Text>
 
-          <Text style={styles.fieldLabel}>What is your Rashi?</Text>
+          <Text style={styles.fieldLabel}>Select Your Date of Birth *</Text>
           <Pressable
             style={styles.inputRow}
-            onPress={() => setDropdownOpen(true)}>
+            onPress={() => setShowDobPicker(true)}>
             <Text
               style={[
                 styles.pickerValue,
-                !selectedRashi && styles.pickerPlaceholder,
+                !dob && styles.pickerPlaceholder,
               ]}>
-              {selectedRashi ? selectedRashi.label : 'Select your Rashi'}
+              {dob ? dob.toLocaleDateString('en-GB') : 'Select Date of Birth'}
             </Text>
-            <Text style={styles.inputIcon}>▼</Text>
+            <Text style={styles.inputIcon}>📅</Text>
           </Pressable>
+
+          {showDobPicker && (
+            <DateTimePicker
+              value={dob || new Date()}
+              mode="date"
+              maximumDate={new Date()}
+              onChange={(event, date) => {
+                setShowDobPicker(false);
+                if (event.type === 'set' && date) {
+                  setDob(date);
+                  setRevealed(null);
+                  setApiTree(null);
+                  setErrorMsg('');
+                }
+              }}
+            />
+          )}
+
+          <Text style={styles.fieldLabel}>Select Your Birth Time *</Text>
+          <Pressable
+            style={styles.inputRow}
+            onPress={() => setShowTimePicker(true)}>
+            <Text
+              style={[
+                styles.pickerValue,
+                !birthTime && styles.pickerPlaceholder,
+              ]}>
+              {birthTime ? formatTime12h(birthTime) : 'Select Birth Time'}
+            </Text>
+            <Text style={styles.inputIcon}>⏰</Text>
+          </Pressable>
+
+          {showTimePicker && (
+            <DateTimePicker
+              value={birthTime || new Date()}
+              mode="time"
+              is24Hour={false}
+              onChange={(event, time) => {
+                setShowTimePicker(false);
+                if (event.type === 'set' && time) {
+                  setBirthTime(time);
+                  setRevealed(null);
+                  setApiTree(null);
+                  setErrorMsg('');
+                }
+              }}
+            />
+          )}
+
+          <Text style={styles.fieldLabel}>Select Your Birth Place *</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Enter your birth place / city"
+              placeholderTextColor="#9ca3af"
+              value={birthPlace}
+              onChangeText={text => {
+                setBirthPlace(text);
+                setRevealed(null);
+                setApiTree(null);
+                setErrorMsg('');
+              }}
+            />
+            <Text style={styles.inputIcon}>📍</Text>
+          </View>
 
           {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : null}
 
@@ -430,48 +587,6 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
           )}
         </View>
       </ScrollView>
-
-      <Modal
-        visible={dropdownOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDropdownOpen(false)}>
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setDropdownOpen(false)}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>What is your Rashi?</Text>
-            <ScrollView style={styles.modalList}>
-              {RASHI_OPTIONS.map(option => {
-                const active = selectedRashi?.apiValue === option.apiValue;
-                return (
-                  <Pressable
-                    key={option.apiValue}
-                    style={[
-                      styles.modalOption,
-                      active && styles.modalOptionActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedRashi(option);
-                      setRevealed(null);
-                      setApiTree(null);
-                      setErrorMsg('');
-                      setDropdownOpen(false);
-                    }}>
-                    <Text
-                      style={[
-                        styles.modalOptionText,
-                        active && styles.modalOptionTextActive,
-                      ]}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -701,6 +816,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0a3617',
     paddingVertical: 14,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0a3617',
+    paddingVertical: 12,
   },
   pickerPlaceholder: {
     color: '#9ca3af',

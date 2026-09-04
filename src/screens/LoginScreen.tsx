@@ -205,13 +205,6 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('MitraRegister')}
-              style={styles.mitraRegisterLink}>
-              <Text style={styles.mitraRegisterText}>Register Mitra</Text>
-            </TouchableOpacity>
-
             <View style={styles.footerRow}>
               <Text style={styles.shieldIcon}>🛡️</Text>
               <Text style={styles.footerText}>Govt-verified · Encrypted</Text>
