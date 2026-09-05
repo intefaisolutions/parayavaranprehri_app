@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import {
   AppState,
   Dimensions,
@@ -40,6 +41,32 @@ import {
 import RemoteImage from '../components/RemoteImage';
 
 const { width } = Dimensions.get('window');
+
+// --- YOUTUBE & MEDIA UTILITIES ---
+function extractYoutubeId(urlOrId?: string): string {
+  if (!urlOrId) return '';
+  const trimmed = urlOrId.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const match = trimmed.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/,
+  );
+  return match ? match[1] : '';
+}
+
+function isDirectVideoUrl(url?: string): boolean {
+  if (!url) return false;
+  const clean = url.trim().toLowerCase();
+  return (
+    clean.endsWith('.mp4') ||
+    clean.endsWith('.m3u8') ||
+    clean.endsWith('.webm') ||
+    clean.includes('s3.amazonaws.com') ||
+    clean.includes('storage.googleapis.com') ||
+    clean.includes('/uploads/')
+  );
+}
 
 type QuickAction = {
   icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -190,6 +217,28 @@ export default function DashboardScreen({
     'Top Eco Contributors',
   );
 
+  const isFocused = useIsFocused();
+  const [isMuted, setIsMuted] = useState(true);
+  const inlineWebViewRef = useRef<any>(null);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      const nextState = !prev;
+      if (inlineWebViewRef.current) {
+        const action = nextState ? 'mute' : 'unmute';
+        inlineWebViewRef.current.postMessage(JSON.stringify({ action }));
+      }
+      return nextState;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (inlineWebViewRef.current) {
+      const action = isFocused ? 'play' : 'pause';
+      inlineWebViewRef.current.postMessage(JSON.stringify({ action }));
+    }
+  }, [isFocused]);
+
   const [conceptVideo, setConceptVideo] = useState<ConceptVideoData>({
     title: 'What is Paryavaran Prahri?',
     subtitle:
@@ -209,7 +258,7 @@ export default function DashboardScreen({
           setConceptVideo(data);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     (async () => {
       const user = await getStoredUser();
       if (mounted && user) {
@@ -592,11 +641,7 @@ export default function DashboardScreen({
             end={{ x: 1, y: 1 }}
             style={styles.videoCardWrapper}
           >
-            <Pressable
-              style={styles.videoCard}
-              onPress={() => setVideoModalOpen(true)}
-              android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
-            >
+            <View style={styles.videoCard}>
               <View style={styles.videoBadge}>
                 <LinearGradient
                   colors={['#f27e20', '#2bb373']}
@@ -612,31 +657,137 @@ export default function DashboardScreen({
               </View>
 
               <View style={styles.videoThumbnailContainer}>
-                <Image
-                  source={{
-                    uri:
-                      conceptVideo.thumbnailUrl ||
-                      `https://img.youtube.com/vi/${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}/maxresdefault.jpg`,
-                  }}
-                  style={styles.videoImage}
-                  resizeMode="cover"
-                />
+                {typeof WebView !== 'undefined' && WebView ? (
+                  <WebView
+                    ref={inlineWebViewRef}
+                    source={{
+                      html: isDirectVideoUrl(conceptVideo.videoUrl)
+                        ? `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; background-color: #000000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    video { width: 100%; height: 100%; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <video id="yt-player" src="${conceptVideo.videoUrl}" controls autoplay muted playsinline preload="auto"></video>
+  <script>
+    window.addEventListener('message', function(event) {
+      try {
+        var data = JSON.parse(event.data);
+        var mediaEl = document.getElementById('yt-player');
+        if (data.action === 'mute') { if (mediaEl) mediaEl.muted = true; }
+        else if (data.action === 'unmute') { if (mediaEl) mediaEl.muted = false; }
+        else if (data.action === 'pause') { if (mediaEl) mediaEl.pause(); }
+        else if (data.action === 'play') { if (mediaEl) mediaEl.play(); }
+      } catch(e) {}
+    });
+  </script>
+</body>
+</html>`
+                        : `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; background-color: #000000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .video-container { position: relative; width: 100%; height: 100%; }
+    iframe { width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <div class="video-container">
+    <iframe 
+      id="yt-player"
+      src="https://www.youtube.com/embed/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}?enablejsapi=1&autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&controls=1" 
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+      allowfullscreen>
+    </iframe>
+  </div>
+  <script>
+    var player;
+    function onYouTubeIframeAPIReady() {
+      if (typeof YT !== 'undefined' && YT.Player) {
+        player = new YT.Player('yt-player', {
+          events: {
+            'onReady': function(event) {
+              event.target.mute();
+              event.target.playVideo();
+            }
+          }
+        });
+      }
+    }
+    window.addEventListener('message', function(event) {
+      try {
+        var data = JSON.parse(event.data);
+        if (data.action === 'mute') {
+          if (player && player.mute) player.mute();
+        } else if (data.action === 'unmute') {
+          if (player && player.unMute) player.unMute();
+        } else if (data.action === 'pause') {
+          if (player && player.pauseVideo) player.pauseVideo();
+        } else if (data.action === 'play') {
+          if (player && player.playVideo) player.playVideo();
+        }
+      } catch(e) {}
+    });
+  </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>`,
+                      baseUrl: 'https://www.youtube.com',
+                    }}
+                    style={{ flex: 1, backgroundColor: '#000000' }}
+                    allowsFullscreenVideo
+                    allowsInlineMediaPlayback
+                    mediaPlaybackRequiresUserAction={false}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    originWhitelist={['*']}
+                    mixedContentMode="always"
+                  />
+                ) : (
+                  <Image
+                    source={{
+                      uri:
+                        conceptVideo.thumbnailUrl ||
+                        `https://img.youtube.com/vi/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}/maxresdefault.jpg`,
+                    }}
+                    style={styles.videoImage}
+                    resizeMode="cover"
+                  />
+                )}
 
-                {/* Overlay Content (Darken + Play Button) */}
-                <View style={styles.videoOverlay}>
-                  <View style={styles.playButton}>
-                    <Text style={styles.playIcon}>▶</Text>
-                  </View>
-                </View>
+                {/* Top Right Floating Mute / Unmute Button */}
+                <Pressable
+                  style={styles.muteButtonOverlay}
+                  onPress={toggleMute}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <MaterialCommunityIcons
+                    name={isMuted ? 'volume-off' : 'volume-high'}
+                    size={16}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.muteButtonText}>
+                    {isMuted ? 'Muted' : 'Sound On'}
+                  </Text>
+                </Pressable>
 
                 {/* Bottom Gradient Fade */}
                 <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.8)']}
+                  colors={['transparent', 'rgba(0,0,0,0.85)']}
                   style={styles.bottomFade}
+                  pointerEvents="none"
                 />
 
-                {/* Text Content (Absolute at bottom of thumbnail) */}
-                <View style={styles.videoTextContent}>
+                {/* Text Content (Absolute at bottom of video card) */}
+                <View style={styles.videoTextContent} pointerEvents="none">
                   <Text style={styles.videoTitle}>
                     {conceptVideo.title || 'What is Paryavaran Prahri?'}
                   </Text>
@@ -646,7 +797,7 @@ export default function DashboardScreen({
                   </Text>
                 </View>
               </View>
-            </Pressable>
+            </View>
           </LinearGradient>
         </View>
 
@@ -722,7 +873,7 @@ export default function DashboardScreen({
                     onPress={() => {
                       void Linking.openURL(
                         conceptVideo.videoUrl ||
-                          `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
+                        `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
                       );
                     }}
                     style={{
@@ -760,7 +911,7 @@ export default function DashboardScreen({
                 onPress={() => {
                   void Linking.openURL(
                     conceptVideo.videoUrl ||
-                      `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
+                    `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
                   );
                 }}
                 style={{
@@ -1836,6 +1987,24 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  muteButtonOverlay: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  muteButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   inspiredContainer: {
     paddingHorizontal: 20,

@@ -83,25 +83,29 @@ export default function ChatbotScreen() {
     setLoading(true);
 
     try {
-      const res = await sendMessage(text, currentSessionId);
-      if (!currentSessionId && res.sessionId) {
-        setCurrentSessionId(res.sessionId);
-        // Refresh sessions list in background
+      const res: any = await sendMessage(text, currentSessionId);
+      const activeSessionId = res?.sessionId || res?.data?.sessionId || currentSessionId;
+      if (!currentSessionId && activeSessionId) {
+        setCurrentSessionId(activeSessionId);
         fetchSessions().then(setSessions).catch(() => {});
       }
+
+      const replyContent =
+        res?.message ||
+        res?.data?.message ||
+        (typeof res === 'string' ? res : 'No response content');
+
+      const action = res?.pendingAction || res?.data?.pendingAction;
 
       const tempAssistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: res.message,
+        content: replyContent,
         createdAt: new Date().toISOString(),
-        pendingAction: res.pendingAction,
+        pendingAction: action,
       };
 
-      setMessages((prev) => {
-        // Find existing index if we want to replace, but appending is fine
-        return [...prev, tempAssistantMsg];
-      });
+      setMessages((prev) => [...prev, tempAssistantMsg]);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to send message');
     } finally {
@@ -165,13 +169,28 @@ export default function ChatbotScreen() {
           isUser ? styles.messageRowUser : styles.messageRowAi,
         ]}
       >
+        {!isUser && (
+          <View style={styles.aiAvatar}>
+            <MaterialCommunityIcons name="robot" size={18} color="#059669" />
+          </View>
+        )}
+
         <View
           style={[
             styles.bubble,
             isUser ? styles.bubbleUser : styles.bubbleAi,
           ]}
         >
-          <Text style={[styles.messageText, isUser && styles.messageTextUser]}>
+          {!isUser && (
+            <Text style={styles.aiSenderLabel}>Prahri AI</Text>
+          )}
+
+          <Text
+            style={[
+              styles.messageText,
+              isUser ? styles.messageTextUser : styles.messageTextAi,
+            ]}
+          >
             {item.content}
           </Text>
 
@@ -210,7 +229,7 @@ export default function ChatbotScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: getTopInset() + 16 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textLight} />
+          <MaterialCommunityIcons name="arrow-left" size={24} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Prahri Assistant</Text>
         <View style={{ width: 24 }} />
@@ -232,7 +251,7 @@ export default function ChatbotScreen() {
         <TextInput
           style={styles.textInput}
           placeholder="Ask a question..."
-          placeholderTextColor="#999"
+          placeholderTextColor="#6B7280"
           value={inputText}
           onChangeText={setInputText}
           multiline
@@ -256,13 +275,13 @@ export default function ChatbotScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F3F4F6',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.primary,
+    backgroundColor: '#126E35',
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
@@ -281,6 +300,7 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
     marginBottom: 16,
+    alignItems: 'flex-start',
   },
   messageRowUser: {
     justifyContent: 'flex-end',
@@ -288,31 +308,55 @@ const styles = StyleSheet.create({
   messageRowAi: {
     justifyContent: 'flex-start',
   },
+  aiAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  aiSenderLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#059669',
+    marginBottom: 4,
+  },
   bubble: {
-    maxWidth: '85%',
+    maxWidth: '82%',
     padding: 12,
     borderRadius: 16,
   },
   bubbleUser: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#126E35',
     borderBottomRightRadius: 4,
   },
   bubbleAi: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#D1FAE5',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
   messageText: {
     fontSize: 15,
-    color: '#333',
     lineHeight: 22,
   },
   messageTextUser: {
-    color: '#fff',
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  messageTextAi: {
+    color: '#111827', // Crisp, high-contrast dark charcoal text
+    fontWeight: '500',
   },
   actionCard: {
     marginTop: 12,
@@ -330,7 +374,7 @@ const styles = StyleSheet.create({
   },
   actionSummary: {
     fontSize: 14,
-    color: '#444',
+    color: '#111827',
     marginBottom: 12,
   },
   actionButtonsRow: {
@@ -367,14 +411,14 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F3F4F6',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
     maxHeight: 100,
     fontSize: 15,
-    color: '#333',
+    color: '#111827',
   },
   sendButton: {
     width: 44,
