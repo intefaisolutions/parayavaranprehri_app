@@ -61,6 +61,7 @@ type DashboardScreenProps = {
   onNotifications?: () => void;
   onSeeAllVehicles?: () => void;
   onSeeAllRanks?: () => void;
+  onOpenChatbot?: () => void;
 };
 
 type LeaderCard = {
@@ -142,6 +143,7 @@ export default function DashboardScreen({
   onNotifications,
   onSeeAllVehicles,
   onSeeAllRanks,
+  onOpenChatbot,
 }: DashboardScreenProps) {
   const [displayName, setDisplayName] = useState('Citizen');
   const [locationLabel, setLocationLabel] = useState('—');
@@ -1161,6 +1163,11 @@ export default function DashboardScreen({
         </View>
 
       </ScrollView>
+
+      {/* Chatbot FAB */}
+      <Pressable style={styles.chatbotFab} onPress={onOpenChatbot}>
+        <MaterialCommunityIcons name="chat-processing" size={28} color="#fff" />
+      </Pressable>
     </View>
   );
 }
@@ -2303,5 +2310,21 @@ const styles = StyleSheet.create({
   footerActionSubtitle: {
     fontSize: 11,
     color: '#6b7280',
+  },
+  chatbotFab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#2b964f',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
   },
 });

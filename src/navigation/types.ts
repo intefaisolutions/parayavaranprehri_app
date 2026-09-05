@@ -11,4 +11,5 @@ export type RootStackParamList = {
   Otp: { phoneNumber: string };
   MainLayout: { phoneNumber?: string } | undefined;
   EventDetail: { event: any; onMarkAttendance?: (eventId: string) => void };
+  Chatbot: undefined;
 };

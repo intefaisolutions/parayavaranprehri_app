@@ -246,6 +246,7 @@ export default function MainLayout() {
             onTreeRequest={() => setOverlay('treeRequest')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
+            onOpenChatbot={() => navigation.navigate('Chatbot' as never)}
             onNotifications={openNotifications}
             onSeeAllVehicles={() => setActiveTab('vehicles')}
             onSeeAllRanks={() => setActiveTab('ranks')}
@@ -294,6 +295,7 @@ export default function MainLayout() {
             onTreeRequest={() => setOverlay('treeRequest')}
             onAboutInitiative={() => setOverlay('aboutInitiative')}
             onAdminPreview={() => setOverlay('adminPreview')}
+            onOpenChatbot={() => navigation.navigate('Chatbot' as never)}
             onNotifications={openNotifications}
             onSeeAllVehicles={() => setActiveTab('vehicles')}
             onSeeAllRanks={() => setActiveTab('ranks')}

@@ -8,6 +8,7 @@ import MitraRegisterScreen from '../screens/MitraRegisterScreen';
 import OtpScreen from '../screens/OtpScreen';
 import MainLayout from '../screens/MainLayout';
 import EventDetailScreen from '../screens/EventDetailScreen';
+import ChatbotScreen from '../screens/ChatbotScreen';
 import { RootStackParamList } from './types';
 import { getAccessToken, getRefreshToken, getStoredPhone } from '../api';
 
@@ -90,7 +91,16 @@ export default function AppNavigator() {
               : undefined
           }
         />
-        <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+        <Stack.Screen
+          name="EventDetail"
+          component={EventDetailScreen}
+          options={{ presentation: 'card' }}
+        />
+        <Stack.Screen
+          name="Chatbot"
+          component={ChatbotScreen}
+          options={{ presentation: 'card' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
