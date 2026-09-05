@@ -12,4 +12,6 @@ export const colors = {
   inputBg: '#F4F9F4',
   inputBorder: '#DDE8E0',
   error: '#D32F2F',
+  primary: '#126E35',
+  primaryLight: '#44B969',
 };

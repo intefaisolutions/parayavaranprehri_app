@@ -11,12 +11,14 @@ import {
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import AppIcon from '../components/AppIcon';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   API_BASE_URL,
   ApiError,
   certificatesService,
+  clearSession,
 } from '../api';
 
 type CertificateItem = {
@@ -74,10 +76,21 @@ export default function UserCertificatesScreen({
   onBack,
   onNotifications,
 }: Props) {
+  const navigation = useNavigation<any>();
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedCert, setSelectedCert] = useState<CertificateItem | null>(null);
+
+  const handleGoToLogin = async () => {
+    await clearSession().catch(() => undefined);
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      }),
+    );
+  };
 
   const fetchCertificates = async () => {
     setLoading(true);
@@ -220,9 +233,19 @@ export default function UserCertificatesScreen({
           <View style={styles.errorCard}>
             <AppIcon name="alert-circle-outline" size={32} color="#dc2626" />
             <Text style={styles.errorText}>{error}</Text>
-            <Pressable style={styles.retryBtn} onPress={fetchCertificates}>
-              <Text style={styles.retryBtnText}>Retry</Text>
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              {error.toLowerCase().includes('authentication') ||
+              error.toLowerCase().includes('log in') ? (
+                <Pressable
+                  style={[styles.retryBtn, { backgroundColor: '#136e35' }]}
+                  onPress={handleGoToLogin}>
+                  <Text style={styles.retryBtnText}>Log In</Text>
+                </Pressable>
+              ) : null}
+              <Pressable style={styles.retryBtn} onPress={fetchCertificates}>
+                <Text style={styles.retryBtnText}>Retry</Text>
+              </Pressable>
+            </View>
           </View>
         ) : certificates.length === 0 ? (
           /* EMPTY STATE */

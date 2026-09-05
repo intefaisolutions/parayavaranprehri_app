@@ -1,4 +1,4 @@
-import { apiCall } from './index';
+import { apiRequest } from './client';
 
 export interface ChatMessage {
   id: string; // or _id
@@ -25,32 +25,30 @@ export async function sendMessage(
   message: string,
   sessionId?: string,
 ): Promise<{ message: string; sessionId: string; pendingAction?: PendingAction }> {
-  const result = await apiCall<{ message: string; sessionId: string; pendingAction?: PendingAction }>(
-    '/api/chat',
-    'POST',
-    { message, sessionId },
+  return apiRequest<{ message: string; sessionId: string; pendingAction?: PendingAction }>(
+    '/chat',
+    { method: 'POST', body: { message, sessionId } },
   );
-  return result;
 }
 
 export async function fetchSessions(): Promise<ChatSession[]> {
-  return apiCall<ChatSession[]>('/api/chat/sessions', 'GET');
+  return apiRequest<ChatSession[]>('/chat/sessions');
 }
 
 export async function fetchSessionHistory(sessionId: string): Promise<ChatMessage[]> {
-  return apiCall<ChatMessage[]>(`/api/chat/history/${sessionId}`, 'GET');
+  return apiRequest<ChatMessage[]>(`/chat/history/${sessionId}`);
 }
 
 export async function confirmAction(pendingActionId: string): Promise<{ success: boolean; message: string }> {
-  return apiCall<{ success: boolean; message: string }>(
-    `/api/chat/actions/${pendingActionId}/confirm`,
-    'POST',
+  return apiRequest<{ success: boolean; message: string }>(
+    `/chat/actions/${pendingActionId}/confirm`,
+    { method: 'POST' },
   );
 }
 
 export async function cancelAction(pendingActionId: string): Promise<{ success: boolean; message: string }> {
-  return apiCall<{ success: boolean; message: string }>(
-    `/api/chat/actions/${pendingActionId}/cancel`,
-    'POST',
+  return apiRequest<{ success: boolean; message: string }>(
+    `/chat/actions/${pendingActionId}/cancel`,
+    { method: 'POST' },
   );
 }

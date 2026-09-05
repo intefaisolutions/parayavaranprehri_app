@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, landOffersService, type LandOfferItem } from '../api';
+import { ApiError, getStoredPhone, landOffersService, type LandOfferItem } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -47,14 +47,15 @@ export default function OfferLandScreen({ onBack, onNotifications }: Props) {
 
   const loadOffers = useCallback(async () => {
     try {
-      const list = await landOffersService.list();
+      const phone = (await getStoredPhone()) || mobile;
+      const list = await landOffersService.list(phone || undefined);
       setOffers(Array.isArray(list) ? list : []);
     } catch {
       setOffers([]);
     } finally {
       setLoadingOffers(false);
     }
-  }, []);
+  }, [mobile]);
 
   useEffect(() => {
     void loadOffers();
@@ -93,24 +94,73 @@ export default function OfferLandScreen({ onBack, onNotifications }: Props) {
 
   const offersSection = (
     <View style={styles.myOffersSection}>
-      <Text style={styles.myOffersTitle}>My offers</Text>
+      <View style={styles.myOffersHeaderRow}>
+        <Text style={styles.myOffersTitle}>My Offers</Text>
+        <Pressable onPress={loadOffers} style={styles.refreshBtn}>
+          <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
+        </Pressable>
+      </View>
       {loadingOffers ? (
         <ActivityIndicator color="#136e35" />
       ) : offers.length === 0 ? (
-        <Text style={styles.myOffersEmpty}>No land offers yet.</Text>
+        <Text style={styles.myOffersEmpty}>No land offers submitted yet.</Text>
       ) : (
-        offers.map(offer => (
-          <View key={offer._id} style={styles.offerRow}>
-            <Text style={styles.offerAddress} numberOfLines={2}>
-              {offer.address}
-            </Text>
-            <Text style={styles.offerMeta}>
-              Size: {offer.landSize}
-              {offer.status ? ` · ${offer.status}` : ''}
-            </Text>
-            <Text style={styles.offerDate}>{formatDate(offer.createdAt)}</Text>
-          </View>
-        ))
+        offers.map(offer => {
+          const normStatus = String(offer.status || 'Pending').trim().toLowerCase();
+          const isSelected = normStatus === 'selected';
+          const isRejected = normStatus === 'rejected';
+          return (
+            <View
+              key={offer._id}
+              style={[
+                styles.offerRow,
+                isSelected && styles.offerRowSelected,
+                isRejected && styles.offerRowRejected,
+              ]}>
+              <View style={styles.offerRowTop}>
+                <Text style={styles.offerAddress} numberOfLines={2}>
+                  {offer.address}
+                </Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    isSelected
+                      ? styles.statusSelected
+                      : isRejected
+                      ? styles.statusRejected
+                      : styles.statusPending,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      isSelected
+                        ? styles.statusSelectedText
+                        : isRejected
+                        ? styles.statusRejectedText
+                        : styles.statusPendingText,
+                    ]}>
+                    {isSelected ? 'Selected' : isRejected ? 'Rejected' : 'Pending'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.offerMeta}>
+                Area: {offer.availableArea || '—'} · Size: {offer.landSize}
+              </Text>
+              {offer.landmark ? (
+                <Text style={styles.offerLandmark}>📍 {offer.landmark}</Text>
+              ) : null}
+              <Text style={styles.offerDate}>Submitted: {formatDate(offer.createdAt)}</Text>
+
+              {isSelected ? (
+                <View style={styles.plantationBanner}>
+                  <Text style={styles.plantationBannerText}>
+                    🌱 We will do plantation here soon.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })
       )}
     </View>
   );
@@ -423,11 +473,27 @@ const styles = StyleSheet.create({
   myOffersSection: {
     marginTop: 24,
   },
+  myOffersHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   myOffersTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: '#0a3617',
-    marginBottom: 12,
+  },
+  refreshBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#e8f5e9',
+  },
+  refreshBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0c4820',
   },
   myOffersEmpty: {
     fontSize: 13,
@@ -435,24 +501,86 @@ const styles = StyleSheet.create({
   },
   offerRow: {
     backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  offerRowSelected: {
+    borderColor: '#10b981',
+    backgroundColor: '#f0fdf4',
+  },
+  offerRowRejected: {
+    borderColor: '#fca5a5',
+    backgroundColor: '#fff5f5',
+  },
+  offerRowTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   offerAddress: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '700',
     color: '#0a3617',
   },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusPending: {
+    backgroundColor: '#fef3c7',
+  },
+  statusPendingText: {
+    color: '#d97706',
+  },
+  statusSelected: {
+    backgroundColor: '#d1fae5',
+  },
+  statusSelectedText: {
+    color: '#059669',
+  },
+  statusRejected: {
+    backgroundColor: '#fee2e2',
+  },
+  statusRejectedText: {
+    color: '#dc2626',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
   offerMeta: {
     fontSize: 12,
     color: '#374151',
-    marginTop: 4,
+    marginTop: 6,
   },
-  offerDate: {
+  offerLandmark: {
     fontSize: 12,
     color: '#6b7280',
-    marginTop: 4,
+    marginTop: 2,
+  },
+  offerDate: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 6,
+  },
+  plantationBanner: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#ecfdf5',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  plantationBannerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#047857',
   },
   successContainer: {
     flexGrow: 1,

@@ -1,14 +1,18 @@
-import { apiRequest } from '../client';
+import { apiRequest, toQueryString } from '../client';
 import type { CreateLandOfferPayload } from '../types';
 
 export type LandOfferItem = {
   _id: string;
   fullName?: string;
+  mobile?: string;
   address: string;
+  landmark?: string;
   landSize: string;
   availableArea?: string;
+  description?: string;
   status?: string;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 export const landOffersService = {
@@ -19,8 +23,12 @@ export const landOffersService = {
     });
   },
 
-  list() {
-    return apiRequest<LandOfferItem[]>('/land-offers');
+  list(mobile?: string) {
+    return apiRequest<LandOfferItem[]>(`/land-offers/me${toQueryString({ mobile })}`);
+  },
+
+  listMine(mobile?: string) {
+    return apiRequest<LandOfferItem[]>(`/land-offers/me${toQueryString({ mobile })}`);
   },
 
   getById(id: string) {

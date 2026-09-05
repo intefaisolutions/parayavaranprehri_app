@@ -1,3 +1,4 @@
+import { DeviceEventEmitter } from 'react-native';
 import { API_BASE_URL, API_TIMEOUT_MS } from './config';
 import {
   clearSession,
@@ -6,6 +7,8 @@ import {
   setTokens,
 } from './storage';
 import { ApiError, type ApiErrorBody, type TokenPair } from './types';
+
+export const UNAUTHORIZED_EVENT = 'UNAUTHORIZED_SESSION';
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -25,6 +28,7 @@ async function tryRefreshToken(): Promise<boolean> {
   refreshPromise = (async () => {
     const refreshToken = await getRefreshToken();
     if (!refreshToken) {
+      DeviceEventEmitter.emit(UNAUTHORIZED_EVENT);
       return false;
     }
 
@@ -37,6 +41,7 @@ async function tryRefreshToken(): Promise<boolean> {
 
       if (!response.ok) {
         await clearSession();
+        DeviceEventEmitter.emit(UNAUTHORIZED_EVENT);
         return false;
       }
 
@@ -45,6 +50,7 @@ async function tryRefreshToken(): Promise<boolean> {
       return true;
     } catch {
       await clearSession();
+      DeviceEventEmitter.emit(UNAUTHORIZED_EVENT);
       return false;
     } finally {
       refreshPromise = null;

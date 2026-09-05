@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, BackHandler, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, BackHandler, ActivityIndicator, Text, DeviceEventEmitter } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DashboardScreen from './DashboardScreen';
 import VehiclesScreen from './VehiclesScreen';
@@ -30,6 +30,7 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import {
   ApiError,
+  UNAUTHORIZED_EVENT,
   authService,
   clearSession,
   getRefreshToken,
@@ -186,7 +187,7 @@ export default function MainLayout() {
     setOverlay('vehicleDetail');
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
@@ -204,7 +205,14 @@ export default function MainLayout() {
         await clearSession().catch(() => undefined);
       }
     })();
-  };
+  }, [navigation]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(UNAUTHORIZED_EVENT, () => {
+      handleLogout();
+    });
+    return () => sub.remove();
+  }, [handleLogout]);
 
   const openNotifications = () => setOverlay('notifications');
 

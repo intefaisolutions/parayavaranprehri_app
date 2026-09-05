@@ -9,8 +9,11 @@ import {
   Text,
   View,
   Alert,
+  Modal,
+  Linking,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import WebView from 'react-native-webview';
 
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon, { IconName } from '../components/AppIcon';
@@ -29,6 +32,8 @@ import {
   personsService,
   unwrapList,
   usersService,
+  conceptVideoService,
+  type ConceptVideoData,
   type Leader,
   type LeaderboardEntry,
 } from '../api';
@@ -185,8 +190,26 @@ export default function DashboardScreen({
     'Top Eco Contributors',
   );
 
+  const [conceptVideo, setConceptVideo] = useState<ConceptVideoData>({
+    title: 'What is Paryavaran Prahri?',
+    subtitle:
+      'Learn how vehicles, citizens, plantation and environmental contribution come together under Mission 2047.',
+    videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    youtubeId: 'dQw4w9WgXcQ',
+    thumbnailUrl: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+  });
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+
   useEffect(() => {
     let mounted = true;
+    conceptVideoService
+      .get()
+      .then(data => {
+        if (mounted && data && data.videoUrl) {
+          setConceptVideo(data);
+        }
+      })
+      .catch(() => {});
     (async () => {
       const user = await getStoredUser();
       if (mounted && user) {
@@ -569,7 +592,11 @@ export default function DashboardScreen({
             end={{ x: 1, y: 1 }}
             style={styles.videoCardWrapper}
           >
-            <View style={styles.videoCard}>
+            <Pressable
+              style={styles.videoCard}
+              onPress={() => setVideoModalOpen(true)}
+              android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+            >
               <View style={styles.videoBadge}>
                 <LinearGradient
                   colors={['#f27e20', '#2bb373']}
@@ -586,7 +613,11 @@ export default function DashboardScreen({
 
               <View style={styles.videoThumbnailContainer}>
                 <Image
-                  source={{ uri: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg' }}
+                  source={{
+                    uri:
+                      conceptVideo.thumbnailUrl ||
+                      `https://img.youtube.com/vi/${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}/maxresdefault.jpg`,
+                  }}
                   style={styles.videoImage}
                   resizeMode="cover"
                 />
@@ -606,15 +637,148 @@ export default function DashboardScreen({
 
                 {/* Text Content (Absolute at bottom of thumbnail) */}
                 <View style={styles.videoTextContent}>
-                  <Text style={styles.videoTitle}>What is Paryavaran Prahri?</Text>
-                  <Text style={styles.videoSubtitle}>
-                    Learn how vehicles, citizens, plantation and environmental contribution come together under Mission 2047.
+                  <Text style={styles.videoTitle}>
+                    {conceptVideo.title || 'What is Paryavaran Prahri?'}
+                  </Text>
+                  <Text style={styles.videoSubtitle} numberOfLines={2}>
+                    {conceptVideo.subtitle ||
+                      'Learn how vehicles, citizens, plantation and environmental contribution come together under Mission 2047.'}
                   </Text>
                 </View>
               </View>
-            </View>
+            </Pressable>
           </LinearGradient>
         </View>
+
+        {/* IN-APP VIDEO PLAYER MODAL */}
+        <Modal
+          visible={videoModalOpen}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setVideoModalOpen(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: '#0a0f1d' }}>
+            {/* Modal Header */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingTop: getTopInset(12),
+                paddingBottom: 12,
+                backgroundColor: '#111827',
+                borderBottomWidth: 1,
+                borderBottomColor: '#1f2937',
+              }}
+            >
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text
+                  style={{ color: '#10b981', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 }}
+                >
+                  CONCEPT VIDEO
+                </Text>
+                <Text
+                  style={{ color: '#ffffff', fontSize: 16, fontWeight: '700', marginTop: 2 }}
+                  numberOfLines={1}
+                >
+                  {conceptVideo.title}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setVideoModalOpen(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: 'rgba(255,255,255,0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Embedded YouTube WebView */}
+            <View style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center' }}>
+              {typeof WebView !== 'undefined' && WebView ? (
+                <WebView
+                  source={{
+                    uri: `https://www.youtube.com/embed/${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}?autoplay=1&rel=0&modestbranding=1`,
+                  }}
+                  style={{ flex: 1 }}
+                  allowsFullscreenVideo
+                  mediaPlaybackRequiresUserAction={false}
+                  javaScriptEnabled
+                  domStorageEnabled
+                />
+              ) : (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                  <Text style={{ color: '#ffffff', fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+                    Tap below to watch concept video on YouTube
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      void Linking.openURL(
+                        conceptVideo.videoUrl ||
+                          `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
+                      );
+                    }}
+                    style={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 12,
+                      backgroundColor: '#ef4444',
+                      borderRadius: 10,
+                    }}>
+                    <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>
+                      ▶ Watch on YouTube
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+
+            {/* Bottom Footer Actions */}
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: getBottomInset(16),
+                backgroundColor: '#111827',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderTopWidth: 1,
+                borderTopColor: '#1f2937',
+              }}
+            >
+              <Text style={{ color: '#9ca3af', fontSize: 12, flex: 1, marginRight: 10 }} numberOfLines={2}>
+                {conceptVideo.subtitle}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  void Linking.openURL(
+                    conceptVideo.videoUrl ||
+                      `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
+                  );
+                }}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  backgroundColor: '#ef4444',
+                  borderRadius: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
+                  ▶ YouTube
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
         {/* INSPIRED BY SECTION */}
         <View style={styles.inspiredContainer}>
@@ -1162,9 +1326,54 @@ export default function DashboardScreen({
           </Pressable>
         </View>
 
+        {/* PRAHRI AI CHATBOT BANNER (Below About Initiative & Admin Preview) */}
+        <View style={styles.chatbotSectionContainer}>
+          <LinearGradient
+            colors={['#064e3b', '#047857']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.chatbotBannerCard}
+          >
+            <View style={styles.chatbotBannerContent}>
+              <View style={styles.chatbotHeaderRow}>
+                <View style={styles.chatbotIconBadge}>
+                  <MaterialCommunityIcons name="robot" size={26} color="#34d399" />
+                </View>
+                <View style={styles.chatbotTitleCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.chatbotBadgeText}>PRAHRI AI ASSISTANT</Text>
+                    <View style={styles.livePulseDot} />
+                  </View>
+                  <Text style={styles.chatbotTitleText}>Need help or have questions?</Text>
+                </View>
+              </View>
+
+              <Text style={styles.chatbotSubText}>
+                Ask our AI about tree plantation, vehicle emission guidelines, certificates, or mission details 24/7.
+              </Text>
+
+              <Pressable
+                style={styles.chatbotCardBtnWrap}
+                onPress={onOpenChatbot}
+                android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+              >
+                <LinearGradient
+                  colors={['#10b981', '#059669']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.chatbotCardBtn}
+                >
+                  <MaterialCommunityIcons name="chat-processing-outline" size={20} color="#fff" />
+                  <Text style={styles.chatbotCardBtnText}>Chat with Prahri AI ✨</Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </LinearGradient>
+        </View>
+
       </ScrollView>
 
-      {/* Chatbot FAB */}
+      {/* Chatbot FAB (Positioned safely above bottom navigation bar) */}
       <Pressable style={styles.chatbotFab} onPress={onOpenChatbot}>
         <MaterialCommunityIcons name="chat-processing" size={28} color="#fff" />
       </Pressable>
@@ -2313,18 +2522,95 @@ const styles = StyleSheet.create({
   },
   chatbotFab: {
     position: 'absolute',
-    right: 24,
-    bottom: 24,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#2b964f',
+    right: 20,
+    bottom: getBottomInset(100),
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#10b981',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 9,
+    zIndex: 99,
+  },
+  chatbotSectionContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  chatbotBannerCard: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  chatbotBannerContent: {
+    padding: 20,
+  },
+  chatbotHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  chatbotIconBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  chatbotTitleCol: {
+    flex: 1,
+  },
+  chatbotBadgeText: {
+    color: '#34d399',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  livePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+  },
+  chatbotTitleText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  chatbotSubText: {
+    color: '#d1fae5',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+  chatbotCardBtnWrap: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  chatbotCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  chatbotCardBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

@@ -444,7 +444,7 @@ const DEFAULT_SAMPLE_CERTS = [
     subtitle: 'Outstanding contribution to Green Canopy Drive 2026',
     code: 'PM-CERT-2026-001',
     recipientName: 'Paryavaran Mitra',
-    downloadPath: '/certificate/PM-CERT-2026-001',
+    downloadPath: `${API_BASE_URL}/certificates/download-pdf/PM-CERT-2026-001`,
   },
   {
     id: 'cert-sample-2',
@@ -452,7 +452,7 @@ const DEFAULT_SAMPLE_CERTS = [
     subtitle: 'Successful plantation & maintenance of 50+ healthy trees',
     code: 'PM-CERT-2026-002',
     recipientName: 'Paryavaran Mitra',
-    downloadPath: '/certificate/PM-CERT-2026-002',
+    downloadPath: `${API_BASE_URL}/certificates/download-pdf/PM-CERT-2026-002`,
   },
 ];
 
@@ -567,7 +567,7 @@ export default function MitraDashboardScreen({
         subtitle: c.description || c.eventName || 'Official recognition',
         code,
         recipientName: c.recipientName || '',
-        downloadPath: c.pdfUrl || (code ? `${API_BASE_URL.replace('/api/v1', '')}/certificate/${code}` : null),
+        downloadPath: c.pdfUrl || (code ? `${API_BASE_URL}/certificates/download-pdf/${code}` : null),
       };
     });
 
