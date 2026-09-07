@@ -59,10 +59,11 @@ function isDirectVideoUrl(url?: string): boolean {
   if (!url) return false;
   const clean = url.trim().toLowerCase();
   return (
-    clean.endsWith('.mp4') ||
-    clean.endsWith('.m3u8') ||
-    clean.endsWith('.webm') ||
-    clean.includes('s3.amazonaws.com') ||
+    clean.includes('.mp4') ||
+    clean.includes('.m3u8') ||
+    clean.includes('.webm') ||
+    clean.includes('.mov') ||
+    clean.includes('amazonaws.com') ||
     clean.includes('storage.googleapis.com') ||
     clean.includes('/uploads/')
   );
@@ -239,13 +240,13 @@ export default function DashboardScreen({
     }
   }, [isFocused]);
 
+  // Active Concept Video State from Admin API
   const [conceptVideo, setConceptVideo] = useState<ConceptVideoData>({
-    title: 'What is Paryavaran Prahri?',
-    subtitle:
-      'Learn how vehicles, citizens, plantation and environmental contribution come together under Mission 2047.',
-    videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    thumbnailUrl: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+    title: '',
+    subtitle: '',
+    videoUrl: '',
+    youtubeId: '',
+    thumbnailUrl: '',
   });
   const [videoModalOpen, setVideoModalOpen] = useState(false);
 
@@ -254,11 +255,13 @@ export default function DashboardScreen({
     conceptVideoService
       .get()
       .then(data => {
-        if (mounted && data && data.videoUrl) {
+        if (mounted && data) {
           setConceptVideo(data);
         }
       })
-      .catch(() => { });
+      .catch((err) => {
+        console.log('Concept video API unavailable, using fallback:', err?.message || err);
+      });
     (async () => {
       const user = await getStoredUser();
       if (mounted && user) {
@@ -657,12 +660,13 @@ export default function DashboardScreen({
               </View>
 
               <View style={styles.videoThumbnailContainer}>
-                {typeof WebView !== 'undefined' && WebView ? (
-                  <WebView
-                    ref={inlineWebViewRef}
-                    source={{
-                      html: isDirectVideoUrl(conceptVideo.videoUrl)
-                        ? `<!DOCTYPE html>
+                {conceptVideo.videoUrl && conceptVideo.videoUrl.trim() !== '' ? (
+                  typeof WebView !== 'undefined' && WebView ? (
+                    <WebView
+                      ref={inlineWebViewRef}
+                      source={{
+                        html: isDirectVideoUrl(conceptVideo.videoUrl)
+                          ? `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -688,7 +692,7 @@ export default function DashboardScreen({
   </script>
 </body>
 </html>`
-                        : `<!DOCTYPE html>
+                          : `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -740,66 +744,62 @@ export default function DashboardScreen({
   <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>`,
-                      baseUrl: 'https://www.youtube.com',
-                    }}
-                    style={{ flex: 1, backgroundColor: '#000000' }}
-                    allowsFullscreenVideo
-                    allowsInlineMediaPlayback
-                    mediaPlaybackRequiresUserAction={false}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    originWhitelist={['*']}
-                    mixedContentMode="always"
-                  />
+                        baseUrl: isDirectVideoUrl(conceptVideo.videoUrl) ? undefined : 'https://www.youtube.com',
+                      }}
+                      style={{ flex: 1, backgroundColor: '#000000' }}
+                      allowsFullscreenVideo
+                      allowsInlineMediaPlayback
+                      mediaPlaybackRequiresUserAction={false}
+                      javaScriptEnabled
+                      domStorageEnabled
+                      originWhitelist={['*']}
+                      mixedContentMode="always"
+                    />
+                  ) : (
+                    <Image
+                      source={{
+                        uri:
+                          conceptVideo.thumbnailUrl ||
+                          `https://img.youtube.com/vi/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}/maxresdefault.jpg`,
+                      }}
+                      style={styles.videoImage}
+                      resizeMode="cover"
+                    />
+                  )
                 ) : (
-                  <Image
-                    source={{
-                      uri:
-                        conceptVideo.thumbnailUrl ||
-                        `https://img.youtube.com/vi/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}/maxresdefault.jpg`,
-                    }}
-                    style={styles.videoImage}
-                    resizeMode="cover"
-                  />
+                  <View style={styles.noVideoContainer}>
+                    <MaterialCommunityIcons name="video-off-outline" size={44} color="#9ca3af" />
+                    <Text style={styles.noVideoTitle}>Video is not uploaded by admin</Text>
+                    <Text style={styles.noVideoSubtitle}>वीडियो एडमिन द्वारा अपलोड नहीं की गई है</Text>
+                  </View>
                 )}
-
-                {/* Top Right Floating Mute / Unmute Button */}
-                <Pressable
-                  style={styles.muteButtonOverlay}
-                  onPress={toggleMute}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <MaterialCommunityIcons
-                    name={isMuted ? 'volume-off' : 'volume-high'}
-                    size={16}
-                    color="#ffffff"
-                  />
-                  <Text style={styles.muteButtonText}>
-                    {isMuted ? 'Muted' : 'Sound On'}
-                  </Text>
-                </Pressable>
-
-                {/* Bottom Gradient Fade */}
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.85)']}
-                  style={styles.bottomFade}
-                  pointerEvents="none"
-                />
-
-                {/* Text Content (Absolute at bottom of video card) */}
-                <View style={styles.videoTextContent} pointerEvents="none">
-                  <Text style={styles.videoTitle}>
-                    {conceptVideo.title || 'What is Paryavaran Prahri?'}
-                  </Text>
-                  <Text style={styles.videoSubtitle} numberOfLines={2}>
-                    {conceptVideo.subtitle ||
-                      'Learn how vehicles, citizens, plantation and environmental contribution come together under Mission 2047.'}
-                  </Text>
-                </View>
               </View>
-            </View>
-          </LinearGradient>
-        </View>
+
+                {/* Bottom Gradient Fade & Text Content (Only rendered when video is uploaded by admin) */}
+                {Boolean(conceptVideo.videoUrl?.trim()) && (
+                  <>
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0,0,0,0.85)']}
+                      style={styles.bottomFade}
+                      pointerEvents="none"
+                    />
+                    {(Boolean(conceptVideo.title?.trim()) || Boolean(conceptVideo.subtitle?.trim())) && (
+                      <View style={styles.videoTextContent} pointerEvents="none">
+                        {Boolean(conceptVideo.title?.trim()) && (
+                          <Text style={styles.videoTitle}>{conceptVideo.title}</Text>
+                        )}
+                        {Boolean(conceptVideo.subtitle?.trim()) && (
+                          <Text style={styles.videoSubtitle} numberOfLines={2}>
+                            {conceptVideo.subtitle}
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+            </LinearGradient>
+          </View>
 
         {/* IN-APP VIDEO PLAYER MODAL */}
         <Modal
@@ -851,39 +851,60 @@ export default function DashboardScreen({
               </Pressable>
             </View>
 
-            {/* Embedded YouTube WebView */}
+            {/* Embedded Video Player (Supports S3 MP4 Video Files & YouTube) */}
             <View style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center' }}>
               {typeof WebView !== 'undefined' && WebView ? (
                 <WebView
-                  source={{
-                    uri: `https://www.youtube.com/embed/${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}?autoplay=1&rel=0&modestbranding=1`,
-                  }}
+                  source={
+                    isDirectVideoUrl(conceptVideo.videoUrl)
+                      ? {
+                          html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; background-color: #000000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <video src="${conceptVideo.videoUrl}" controls autoplay playsinline preload="auto"></video>
+</body>
+</html>`,
+                        }
+                      : {
+                          uri: `https://www.youtube.com/embed/${conceptVideo.youtubeId || extractYoutubeId(conceptVideo.videoUrl)}?autoplay=1&rel=0&modestbranding=1`,
+                        }
+                  }
                   style={{ flex: 1 }}
                   allowsFullscreenVideo
+                  allowsInlineMediaPlayback
                   mediaPlaybackRequiresUserAction={false}
                   javaScriptEnabled
                   domStorageEnabled
+                  originWhitelist={['*']}
+                  mixedContentMode="always"
                 />
               ) : (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
                   <Text style={{ color: '#ffffff', fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
-                    Tap below to watch concept video on YouTube
+                    Tap below to open concept video
                   </Text>
                   <Pressable
                     onPress={() => {
-                      void Linking.openURL(
-                        conceptVideo.videoUrl ||
-                        `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
-                      );
+                      if (conceptVideo.videoUrl) {
+                        void Linking.openURL(conceptVideo.videoUrl);
+                      }
                     }}
                     style={{
                       paddingHorizontal: 20,
                       paddingVertical: 12,
-                      backgroundColor: '#ef4444',
+                      backgroundColor: '#10b981',
                       borderRadius: 10,
                     }}>
                     <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>
-                      ▶ Watch on YouTube
+                      ▶ Open Video Link
                     </Text>
                   </Pressable>
                 </View>
@@ -909,22 +930,21 @@ export default function DashboardScreen({
               </Text>
               <Pressable
                 onPress={() => {
-                  void Linking.openURL(
-                    conceptVideo.videoUrl ||
-                    `https://www.youtube.com/watch?v=${conceptVideo.youtubeId || 'dQw4w9WgXcQ'}`,
-                  );
+                  if (conceptVideo.videoUrl) {
+                    void Linking.openURL(conceptVideo.videoUrl);
+                  }
                 }}
                 style={{
                   paddingHorizontal: 14,
                   paddingVertical: 8,
-                  backgroundColor: '#ef4444',
+                  backgroundColor: '#10b981',
                   borderRadius: 8,
                   flexDirection: 'row',
                   alignItems: 'center',
                 }}
               >
                 <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
-                  ▶ YouTube
+                  ▶ Open Link
                 </Text>
               </Pressable>
             </View>
@@ -1931,6 +1951,25 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
+  },
+  noVideoContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    backgroundColor: '#111827',
+    gap: 6,
+  },
+  noVideoTitle: {
+    color: '#f3f4f6',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  noVideoSubtitle: {
+    color: '#9ca3af',
+    fontSize: 12,
+    textAlign: 'center',
   },
   videoOverlay: {
     ...StyleSheet.absoluteFill,

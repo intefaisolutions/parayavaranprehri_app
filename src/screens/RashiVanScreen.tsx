@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
-import { RevealedTree, RashiKey } from '../data/rashiVanData';
+import { RashiKey, RASHI_DATA, getRashiFromDate } from '../data/rashiVanData';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
   ApiError,
@@ -92,9 +92,28 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
   const [birthPlace, setBirthPlace] = useState('');
   const [calculatedRashiName, setCalculatedRashiName] = useState('');
 
-  const [revealed, setRevealed] = useState<RevealedTree | null>(null);
+  const [calculatedRashi, setCalculatedRashi] = useState<{
+    key: RashiKey;
+    displayName: string;
+    nakshatra?: string;
+    deity?: string;
+    rawRashiName: string;
+  } | null>(null);
+  const [calculatingRashi, setCalculatingRashi] = useState(false);
+
+  const [revealedTree, setRevealedTree] = useState<{
+    name: string;
+    significance: string;
+    karma?: number;
+    vitality?: number;
+    harmony?: number;
+  } | null>(null);
+
   const [apiTree, setApiTree] = useState<PublicRashiTree | null>(null);
-  const [revealing, setRevealing] = useState(false);
+  const [treeRevealed, setTreeRevealed] = useState(false);
+  const [revealingTree, setRevealingTree] = useState(false);
+  const [treeErrorMsg, setTreeErrorMsg] = useState('');
+
   const [planting, setPlanting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [myRequests, setMyRequests] = useState<RashiPlantRequestApi[]>([]);
@@ -115,29 +134,42 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
     void loadMyRequests();
   }, []);
 
-  const handleReveal = async () => {
-    if (revealing) return;
+  const resetAllCalculations = () => {
+    setCalculatedRashi(null);
+    setCalculatedRashiName('');
+    setRevealedTree(null);
+    setApiTree(null);
+    setTreeRevealed(false);
+    setTreeErrorMsg('');
+    setErrorMsg('');
+  };
+
+  const handleCalculateRashi = async () => {
+    if (calculatingRashi) return;
     if (!dob) {
       setErrorMsg('Please select your Date of Birth.');
-      setRevealed(null);
-      setApiTree(null);
+      resetAllCalculations();
       return;
     }
     if (!birthTime) {
       setErrorMsg('Please select your Birth Time.');
-      setRevealed(null);
-      setApiTree(null);
+      resetAllCalculations();
       return;
     }
     if (!birthPlace.trim()) {
       setErrorMsg('Please enter your Birth Place.');
-      setRevealed(null);
-      setApiTree(null);
+      resetAllCalculations();
       return;
     }
 
     setErrorMsg('');
-    setRevealing(true);
+    setCalculatingRashi(true);
+    setCalculatedRashi(null);
+    setCalculatedRashiName('');
+    setRevealedTree(null);
+    setApiTree(null);
+    setTreeRevealed(false);
+    setTreeErrorMsg('');
 
     const dateOfBirthStr = formatYYYYMMDD(dob);
     const timeOfBirthStr = formatHHMMSS(birthTime);
@@ -145,7 +177,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
 
     try {
       let rashiNameCalculated = '';
-      let api: PublicRashiTree | null = null;
+      let rashiHindiCalculated = '';
 
       // 1. Try backend astrology Rashi calculation API
       try {
@@ -155,91 +187,97 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
           birthPlace: birthPlaceStr,
         });
         rashiNameCalculated = astRes.rashiEnglish || astRes.rashi || '';
+        rashiHindiCalculated = astRes.rashi || '';
       } catch {
         rashiNameCalculated = '';
       }
 
-      if (rashiNameCalculated) {
-        try {
-          api = await rashiTreesService.byRashi(rashiNameCalculated);
-        } catch {
-          api = null;
-        }
+      // 2. Fallback to local Vedic calculation if backend astrology API failed
+      const fallbackInfo = getRashiFromDate(dob);
+      if (!rashiNameCalculated) {
+        rashiNameCalculated = fallbackInfo.name;
       }
 
-      // 2. Fallback to auto-calculation by DOB endpoint if needed
-      if (!api) {
-        api = await rashiTreesService.byDob(dateOfBirthStr);
-        rashiNameCalculated = api.rashi || rashiNameCalculated || 'Sacred Rashi';
+      const key = getRashiKey(rashiNameCalculated);
+      const localInfo = RASHI_DATA.find(r => r.key === key) || fallbackInfo;
+
+      let displayName = localInfo.name;
+      if (rashiNameCalculated && rashiNameCalculated.toLowerCase() !== localInfo.name.toLowerCase()) {
+        displayName = `${rashiNameCalculated} (${localInfo.name})`;
+      } else if (rashiHindiCalculated && rashiHindiCalculated.toLowerCase() !== rashiNameCalculated.toLowerCase()) {
+        displayName = `${rashiNameCalculated} (${rashiHindiCalculated})`;
       }
 
-      const primary =
-        api.trees && api.trees.length > 0 ? api.trees[0] : undefined;
-      const significance =
-        api.description ||
-        primary?.description ||
-        (api.benefits?.length ? api.benefits.join(' · ') : '') ||
-        (primary?.benefits?.length ? primary.benefits.join(' · ') : '') ||
-        'Sacred tree aligned with your Rashi.';
-
-      const deity = api.deity || primary?.deity;
-      const nakshatras = api.nakshatras?.length
-        ? api.nakshatras
-        : primary?.nakshatras || [];
-      const karma =
-        typeof api.karmaBonus === 'number'
-          ? api.karmaBonus
-          : typeof primary?.karmaBonus === 'number'
-            ? primary.karmaBonus
-            : undefined;
-      const vitality =
-        typeof api.vitalityBonus === 'number'
-          ? api.vitalityBonus
-          : typeof primary?.vitalityBonus === 'number'
-            ? primary.vitalityBonus
-            : undefined;
-      const harmony =
-        typeof api.harmonyBonus === 'number'
-          ? api.harmonyBonus
-          : typeof primary?.harmonyBonus === 'number'
-            ? primary.harmonyBonus
-            : undefined;
-
-      const finalRashiName = rashiNameCalculated || api.rashi || 'Rashi';
-      setCalculatedRashiName(finalRashiName);
-      setApiTree(api);
-      setRevealed({
-        rashi: {
-          key: getRashiKey(finalRashiName),
-          name: api.rashiHindi ? `${api.rashi} (${api.rashiHindi})` : finalRashiName,
-          deity,
-          nakshatras,
-          trees: [],
-        },
-        nakshatra: nakshatras[0],
-        tree: {
-          name: api.tree || primary?.tree || 'Sacred Tree',
-          significance,
-          karma,
-          vitality,
-          harmony,
-        },
+      setCalculatedRashiName(rashiNameCalculated);
+      setCalculatedRashi({
+        key,
+        displayName,
+        nakshatra: localInfo.nakshatras[0],
+        deity: localInfo.deity,
+        rawRashiName: rashiNameCalculated,
       });
     } catch (error) {
-      setRevealed(null);
-      setApiTree(null);
       setErrorMsg(
         error instanceof ApiError
           ? error.message
-          : 'Could not calculate Rashi and load sacred tree.',
+          : 'Could not calculate Rashi. Please check your details and try again.',
       );
     } finally {
-      setRevealing(false);
+      setCalculatingRashi(false);
+    }
+  };
+
+  const handleRevealTree = async () => {
+    if (!calculatedRashi || !dob || revealingTree) return;
+
+    setRevealingTree(true);
+    setTreeErrorMsg('');
+    setTreeRevealed(true);
+
+    const dateOfBirthStr = formatYYYYMMDD(dob);
+
+    try {
+      let api: PublicRashiTree | null = null;
+
+      try {
+        api = await rashiTreesService.byRashi(calculatedRashi.rawRashiName || calculatedRashiName);
+      } catch {
+        api = await rashiTreesService.byDob(dateOfBirthStr);
+      }
+
+      if (api) {
+        const primary = api.trees && api.trees.length > 0 ? api.trees[0] : undefined;
+        const significance =
+          api.description ||
+          primary?.description ||
+          (api.benefits?.length ? api.benefits.join(' · ') : '') ||
+          (primary?.benefits?.length ? primary.benefits.join(' · ') : '') ||
+          'Sacred tree aligned with your Rashi.';
+
+        setApiTree(api);
+        setRevealedTree({
+          name: api.tree || primary?.tree || 'Sacred Tree',
+          significance,
+          karma: typeof api.karmaBonus === 'number' ? api.karmaBonus : primary?.karmaBonus,
+          vitality: typeof api.vitalityBonus === 'number' ? api.vitalityBonus : primary?.vitalityBonus,
+          harmony: typeof api.harmonyBonus === 'number' ? api.harmonyBonus : primary?.harmonyBonus,
+        });
+      }
+    } catch (error) {
+      setApiTree(null);
+      setRevealedTree(null);
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : `No tree recommendation configured yet for ${calculatedRashi.displayName}.`;
+      setTreeErrorMsg(message);
+    } finally {
+      setRevealingTree(false);
     }
   };
 
   const handlePlantRequest = async () => {
-    if (planting || !revealed) return;
+    if (planting || !revealedTree || !calculatedRashi) return;
 
     setPlanting(true);
     try {
@@ -262,14 +300,14 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
       }
 
       await rashiPlantRequestsService.create({
-        rashiName: calculatedRashiName || apiTree?.rashi || 'Rashi',
+        rashiName: calculatedRashi?.displayName || calculatedRashiName || apiTree?.rashi || 'Rashi',
         rashiNameHindi: apiTree?.rashiHindi,
-        recommendedTree: revealed.tree.name,
+        recommendedTree: revealedTree.name,
         scientificName: apiTree?.scientificName,
         localName: apiTree?.localName,
-        treeDescription: apiTree?.description || revealed.tree.significance,
+        treeDescription: apiTree?.description || revealedTree.significance,
         benefits: apiTree?.benefits,
-        remarks: `Sacred Tree request from Rashi Van · ${calculatedRashiName || apiTree?.rashi}`,
+        remarks: `Sacred Tree request from Rashi Van · ${calculatedRashi?.displayName || calculatedRashiName || apiTree?.rashi}`,
         userName,
         mobile,
         email: user?.email,
@@ -279,7 +317,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
       });
       Alert.alert(
         'Request submitted',
-        `Your request to plant ${revealed.tree.name} has been sent to the admin for review.`,
+        `Your request to plant ${revealedTree.name} has been sent to the admin for review.`,
       );
       void loadMyRequests();
     } catch (error) {
@@ -386,9 +424,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
                 setShowDobPicker(false);
                 if (event.type === 'set' && date) {
                   setDob(date);
-                  setRevealed(null);
-                  setApiTree(null);
-                  setErrorMsg('');
+                  resetAllCalculations();
                 }
               }}
             />
@@ -417,9 +453,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
                 setShowTimePicker(false);
                 if (event.type === 'set' && time) {
                   setBirthTime(time);
-                  setRevealed(null);
-                  setApiTree(null);
-                  setErrorMsg('');
+                  resetAllCalculations();
                 }
               }}
             />
@@ -434,9 +468,7 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
               value={birthPlace}
               onChangeText={text => {
                 setBirthPlace(text);
-                setRevealed(null);
-                setApiTree(null);
-                setErrorMsg('');
+                resetAllCalculations();
               }}
             />
             <Text style={styles.inputIcon}>📍</Text>
@@ -446,115 +478,172 @@ export default function RashiVanScreen({ onBack, onNotifications }: Props) {
 
           <Pressable
             style={styles.revealBtnWrap}
-            onPress={() => void handleReveal()}
-            disabled={revealing}>
+            onPress={() => void handleCalculateRashi()}
+            disabled={calculatingRashi}>
             <LinearGradient
               colors={['#0c4820', '#2b964f']}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={styles.revealBtn}>
-              {revealing ? (
+              {calculatingRashi ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.revealBtnText}>
-                  ✨  Reveal my sacred tree
+                  ✨ Calculate My Rashi & Nakshatra
                 </Text>
               )}
             </LinearGradient>
           </Pressable>
 
-          {revealed && (
+          {calculatedRashi && (
             <View style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <View style={styles.treeIconBox}>
-                  <Text style={styles.treeIcon}>🌳</Text>
-                </View>
-                <View style={styles.resultHeaderText}>
-                  <Text style={styles.resultLabel}>RECOMMENDED SACRED TREE</Text>
-                  <Text style={styles.resultTreeName}>{revealed.tree.name}</Text>
-                  <Text style={styles.resultSubtext}>
-                    शुभ वृक्ष · for {revealed.rashi.name}
-                  </Text>
-                </View>
-              </View>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: '#10b981',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  marginBottom: 10,
+                }}>
+                YOUR VEDIC RASHI & NAKSHATRA
+              </Text>
 
               <View style={styles.badgeRow}>
                 <View style={[styles.badge, styles.badgeRashi]}>
                   <Text style={styles.badgeIcon}>☀️</Text>
                   <Text style={styles.badgeLabel}>Rashi</Text>
-                  <Text style={styles.badgeValue}>{revealed.rashi.name}</Text>
+                  <Text style={styles.badgeValue}>{calculatedRashi.displayName}</Text>
                 </View>
-                {revealed.nakshatra ? (
+                {calculatedRashi.nakshatra ? (
                   <View style={[styles.badge, styles.badgeNakshatra]}>
                     <Text style={styles.badgeIcon}>⭐</Text>
                     <Text style={styles.badgeLabel}>Nakshatra</Text>
-                    <Text style={styles.badgeValue}>{revealed.nakshatra}</Text>
+                    <Text style={styles.badgeValue}>{calculatedRashi.nakshatra}</Text>
                   </View>
                 ) : null}
-                {revealed.rashi.deity ? (
+                {calculatedRashi.deity ? (
                   <View style={[styles.badge, styles.badgeDeity]}>
                     <Text style={styles.badgeIcon}>🌙</Text>
                     <Text style={styles.badgeLabel}>Deity</Text>
                     <Text style={styles.badgeValue}>
-                      {revealed.rashi.deity}
+                      {calculatedRashi.deity}
                     </Text>
                   </View>
                 ) : null}
               </View>
 
-              <View style={styles.significanceBox}>
-                <Text style={styles.significanceTitle}>Spiritual significance</Text>
-                <Text style={styles.significanceText}>
-                  {revealed.tree.significance}
-                </Text>
-              </View>
-
-              {typeof revealed.tree.karma === 'number' ||
-              typeof revealed.tree.vitality === 'number' ||
-              typeof revealed.tree.harmony === 'number' ? (
-                <View style={styles.statsRow}>
-                  {typeof revealed.tree.karma === 'number' ? (
-                    <View style={styles.statPill}>
-                      <Text style={styles.statText}>
-                        Karma +{revealed.tree.karma}%
-                      </Text>
-                    </View>
-                  ) : null}
-                  {typeof revealed.tree.vitality === 'number' ? (
-                    <View style={styles.statPill}>
-                      <Text style={styles.statText}>
-                        Vitality +{revealed.tree.vitality}%
-                      </Text>
-                    </View>
-                  ) : null}
-                  {typeof revealed.tree.harmony === 'number' ? (
-                    <View style={styles.statPill}>
-                      <Text style={styles.statText}>
-                        Harmony +{revealed.tree.harmony}%
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-
-              <Pressable
-                style={styles.plantBtnWrap}
-                onPress={() => void handlePlantRequest()}
-                disabled={planting}>
-                <LinearGradient
-                  colors={['#0c4820', '#2b964f']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={styles.plantBtn}>
-                  {planting ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.plantBtnText}>
-                      Plant my {revealed.tree.name} 🌱
+              {!treeRevealed ? (
+                <Pressable
+                  style={[styles.revealBtnWrap, { marginTop: 16 }]}
+                  onPress={() => void handleRevealTree()}>
+                  <LinearGradient
+                    colors={['#0c4820', '#2b964f']}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.revealBtn}>
+                    <Text style={styles.revealBtnText}>
+                      🌳 Reveal My Sacred Tree →
                     </Text>
-                  )}
-                </LinearGradient>
-              </Pressable>
+                  </LinearGradient>
+                </Pressable>
+              ) : revealingTree ? (
+                <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                  <ActivityIndicator color="#0c4820" size="large" />
+                </View>
+              ) : treeErrorMsg ? (
+                <View style={styles.treeNoticeBox}>
+                  <Text style={styles.treeNoticeIcon}>ℹ️</Text>
+                  <View style={styles.treeNoticeTextWrap}>
+                    <Text style={styles.treeNoticeTitle}>Tree Not Configured Yet</Text>
+                    <Text style={styles.treeNoticeText}>{treeErrorMsg}</Text>
+                  </View>
+                </View>
+              ) : revealedTree ? (
+                <>
+                  <View
+                    style={[
+                      styles.resultHeader,
+                      {
+                        marginTop: 18,
+                        paddingTop: 16,
+                        borderTopWidth: 1,
+                        borderTopColor: '#e5e7eb',
+                      },
+                    ]}>
+                    <View style={styles.treeIconBox}>
+                      <Text style={styles.treeIcon}>🌳</Text>
+                    </View>
+                    <View style={styles.resultHeaderText}>
+                      <Text style={styles.resultLabel}>
+                        RECOMMENDED SACRED TREE
+                      </Text>
+                      <Text style={styles.resultTreeName}>
+                        {revealedTree.name}
+                      </Text>
+                      <Text style={styles.resultSubtext}>
+                        शुभ वृक्ष · for {calculatedRashi.displayName}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.significanceBox}>
+                    <Text style={styles.significanceTitle}>
+                      Spiritual significance
+                    </Text>
+                    <Text style={styles.significanceText}>
+                      {revealedTree.significance}
+                    </Text>
+                  </View>
+
+                  {typeof revealedTree.karma === 'number' ||
+                  typeof revealedTree.vitality === 'number' ||
+                  typeof revealedTree.harmony === 'number' ? (
+                    <View style={styles.statsRow}>
+                      {typeof revealedTree.karma === 'number' ? (
+                        <View style={styles.statPill}>
+                          <Text style={styles.statText}>
+                            Karma +{revealedTree.karma}%
+                          </Text>
+                        </View>
+                      ) : null}
+                      {typeof revealedTree.vitality === 'number' ? (
+                        <View style={styles.statPill}>
+                          <Text style={styles.statText}>
+                            Vitality +{revealedTree.vitality}%
+                          </Text>
+                        </View>
+                      ) : null}
+                      {typeof revealedTree.harmony === 'number' ? (
+                        <View style={styles.statPill}>
+                          <Text style={styles.statText}>
+                            Harmony +{revealedTree.harmony}%
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  <Pressable
+                    style={styles.plantBtnWrap}
+                    onPress={() => void handlePlantRequest()}
+                    disabled={planting}>
+                    <LinearGradient
+                      colors={['#0c4820', '#2b964f']}
+                      start={{ x: 0, y: 0.5 }}
+                      end={{ x: 1, y: 0.5 }}
+                      style={styles.plantBtn}>
+                      {planting ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.plantBtnText}>
+                          Plant my {revealedTree.name} 🌱
+                        </Text>
+                      )}
+                    </LinearGradient>
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           )}
         </View>
@@ -1024,5 +1113,33 @@ const styles = StyleSheet.create({
   modalOptionTextActive: {
     color: '#0a3617',
     fontWeight: '800',
+  },
+  treeNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbe6',
+    borderWidth: 1,
+    borderColor: '#ffe58f',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 16,
+  },
+  treeNoticeIcon: {
+    fontSize: 22,
+    marginRight: 10,
+  },
+  treeNoticeTextWrap: {
+    flex: 1,
+  },
+  treeNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#d46b08',
+    marginBottom: 2,
+  },
+  treeNoticeText: {
+    fontSize: 13,
+    color: '#8c4b00',
+    lineHeight: 18,
   },
 });

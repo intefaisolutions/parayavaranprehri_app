@@ -47,7 +47,7 @@ export default function ChatbotScreen() {
         loadHistory(data[0].sessionId);
       }
     } catch (err) {
-      console.error('Failed to load chat sessions', err);
+      console.log('Failed to load chat sessions:', err);
     }
   };
 
@@ -61,7 +61,7 @@ export default function ChatbotScreen() {
       );
       setMessages(displayMessages);
     } catch (err) {
-      console.error('Failed to load history', err);
+      console.log('Failed to load history:', err);
     } finally {
       setLoading(false);
     }

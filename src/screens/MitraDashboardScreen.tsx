@@ -638,14 +638,12 @@ export default function MitraDashboardScreen({
         } else if (certs && Array.isArray(certs.items)) {
           list = certs.items;
         }
-        if (mounted && list.length > 0) {
-          setCertificates(mapCerts(list));
-        } else if (mounted) {
-          setCertificates(DEFAULT_SAMPLE_CERTS);
+        if (mounted) {
+          setCertificates(list.length > 0 ? mapCerts(list) : []);
         }
       } catch {
         if (mounted) {
-          setCertificates(DEFAULT_SAMPLE_CERTS);
+          setCertificates([]);
         }
       }
 
@@ -694,28 +692,24 @@ export default function MitraDashboardScreen({
           assignedMitra: fetchedMitraName || undefined,
         });
         const list = unwrapList(apiTasks);
-        if (mounted && list.length > 0) {
-          setTasks(mapApiTasks(list));
-        } else if (mounted) {
-          setTasks(DEFAULT_SAMPLE_TASKS);
+        if (mounted) {
+          setTasks(list.length > 0 ? mapApiTasks(list) : []);
         }
       } catch {
         if (mounted) {
-          setTasks(DEFAULT_SAMPLE_TASKS);
+          setTasks([]);
         }
       }
 
       try {
         const apiEvents = await mitraEventsService.listMine();
         const list = Array.isArray(apiEvents) ? apiEvents : [];
-        if (mounted && list.length > 0) {
-          setEvents(mapEvents(list));
-        } else if (mounted) {
-          setEvents(SAMPLE_DEFAULT_EVENTS);
+        if (mounted) {
+          setEvents(list.length > 0 ? mapEvents(list) : []);
         }
       } catch {
         if (mounted) {
-          setEvents(SAMPLE_DEFAULT_EVENTS);
+          setEvents([]);
         }
       }
 
@@ -1392,8 +1386,17 @@ export default function MitraDashboardScreen({
         {/* TAB CONTENT (TASKS) */}
         {activeTab === 'Tasks' && (
           <View style={styles.tabContent}>
-            {tasks.map((task) => (
-              <View key={task.id} style={styles.taskCard}>
+            {tasks.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <AppIcon name="clipboard-text-outline" size={44} color="#9ca3af" />
+                <Text style={styles.emptyTitle}>No Tasks Assigned</Text>
+                <Text style={styles.emptySub}>
+                  Admin has not assigned any field tasks to your profile yet.
+                </Text>
+              </View>
+            ) : (
+              tasks.map((task) => (
+                <View key={task.id} style={styles.taskCard}>
 
                 <View style={styles.taskHeaderRow}>
                   <View style={styles.taskHeaderLeft}>
@@ -1451,7 +1454,8 @@ export default function MitraDashboardScreen({
                   </View>
                 )}
               </View>
-            ))}
+              ))
+            )}
           </View>
         )}
 
@@ -1619,8 +1623,17 @@ export default function MitraDashboardScreen({
         {/* TAB CONTENT (EVENTS) */}
         {activeTab === 'Events' && (
           <View style={styles.tabContent}>
-            {events.map((event) => (
-              <View key={event.id} style={styles.taskCard}>
+            {events.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Icon name="calendar-outline" size={44} color="#9ca3af" />
+                <Text style={styles.emptyTitle}>No Events Available</Text>
+                <Text style={styles.emptySub}>
+                  No upcoming community drives or events scheduled yet.
+                </Text>
+              </View>
+            ) : (
+              events.map((event) => (
+                <View key={event.id} style={styles.taskCard}>
 
                 <View style={styles.taskHeaderRow}>
                   <View style={styles.taskHeaderLeft}>
@@ -1707,7 +1720,8 @@ export default function MitraDashboardScreen({
                 </View>
 
               </View>
-            ))}
+              ))
+            )}
           </View>
         )}
 
@@ -1928,98 +1942,108 @@ export default function MitraDashboardScreen({
         {/* TAB CONTENT (CERTIFICATES) */}
         {activeTab === 'Certificates' && (
           <View style={styles.tabContent}>
-            {certificates.map(cert => (
-              <View key={cert.id} style={styles.taskCard}>
-                <View style={[styles.taskHeaderRow, { marginBottom: 16 }]}>
-                  <View
-                    style={[styles.taskIconBg, { backgroundColor: '#fef3c7' }]}>
-                    <AppIcon name="ribbon" size={20} color="#d97706" />
-                  </View>
-                  <View style={styles.taskTitleCol}>
-                    <Text style={styles.taskTitle}>{cert.title}</Text>
-                    <Text style={styles.taskSubtitle}>
-                      {cert.subtitle}
-                      {cert.recipientName ? ` · Issued to: ${cert.recipientName}` : ''}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.taskActionRow, { gap: 12 }]}>
-                  <Pressable
-                    style={[
-                      styles.taskBtn,
-                      styles.taskBtnOutline,
-                      { borderColor: '#059669', flex: 1, backgroundColor: '#f0fdf4' },
-                    ]}
-                    onPress={async () => {
-                      try {
-                        const path = (cert as any).downloadPath;
-                        if (!path) {
-                          Alert.alert('Not available', 'Certificate PDF is not available yet.');
-                          return;
-                        }
-                        const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
-                        await Linking.openURL(url);
-                      } catch {
-                        Alert.alert('Error', 'Failed to open download link.');
-                      }
-                    }}>
-                    <AppIcon name="download-outline" size={16} color="#059669" />
-                    <Text
-                      style={[styles.taskBtnOutlineText, { color: '#059669', marginLeft: 6 }]}>
-                      Download
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.taskBtn,
-                      styles.taskBtnOutline,
-                      { borderColor: '#e5e7eb', flex: 1 },
-                    ]}
-                    onPress={async () => {
-                      try {
-                        const result: any = await certificatesService.shareWhatsapp(
-                          cert.id,
-                        );
-                        if (result?.success === false) {
-                          throw new Error(
-                            result.error || 'WhatsApp share failed',
-                          );
-                        }
-                        Alert.alert(
-                          'Shared',
-                          'Certificate share was sent via WhatsApp.',
-                        );
-                      } catch (error) {
-                        const text = encodeURIComponent(
-                          `Paryavaran Prahri Certificate\n${cert.title}\n${cert.subtitle}${
-                            (cert as any).code
-                              ? `\nCode: ${(cert as any).code}`
-                              : ''
-                          }`,
-                        );
-                        try {
-                          await Linking.openURL(`https://wa.me/?text=${text}`);
-                        } catch {
-                          Alert.alert(
-                            'Share failed',
-                            error instanceof ApiError
-                              ? error.message
-                              : 'Could not share certificate on WhatsApp.',
-                          );
-                        }
-                      }
-                    }}>
-                    <AppIcon name="whatsapp" size={16} color="#111827" />
-                    <Text
-                      style={[styles.taskBtnOutlineText, { color: '#111827', marginLeft: 6 }]}>
-                      Share
-                    </Text>
-                  </Pressable>
-                </View>
+            {certificates.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <AppIcon name="ribbon" size={44} color="#9ca3af" />
+                <Text style={styles.emptyTitle}>No Certificates Issued Yet</Text>
+                <Text style={styles.emptySub}>
+                  Certificates generated by admin for your contributions will appear here.
+                </Text>
               </View>
-            ))}
+            ) : (
+              certificates.map(cert => (
+                <View key={cert.id} style={styles.taskCard}>
+                  <View style={[styles.taskHeaderRow, { marginBottom: 16 }]}>
+                    <View
+                      style={[styles.taskIconBg, { backgroundColor: '#fef3c7' }]}>
+                      <AppIcon name="ribbon" size={20} color="#d97706" />
+                    </View>
+                    <View style={styles.taskTitleCol}>
+                      <Text style={styles.taskTitle}>{cert.title}</Text>
+                      <Text style={styles.taskSubtitle}>
+                        {cert.subtitle}
+                        {cert.recipientName ? ` · Issued to: ${cert.recipientName}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.taskActionRow, { gap: 12 }]}>
+                    <Pressable
+                      style={[
+                        styles.taskBtn,
+                        styles.taskBtnOutline,
+                        { borderColor: '#059669', flex: 1, backgroundColor: '#f0fdf4' },
+                      ]}
+                      onPress={async () => {
+                        try {
+                          const path = (cert as any).downloadPath;
+                          if (!path) {
+                            Alert.alert('Not available', 'Certificate PDF is not available yet.');
+                            return;
+                          }
+                          const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+                          await Linking.openURL(url);
+                        } catch {
+                          Alert.alert('Error', 'Failed to open download link.');
+                        }
+                      }}>
+                      <AppIcon name="download-outline" size={16} color="#059669" />
+                      <Text
+                        style={[styles.taskBtnOutlineText, { color: '#059669', marginLeft: 6 }]}>
+                        Download
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.taskBtn,
+                        styles.taskBtnOutline,
+                        { borderColor: '#e5e7eb', flex: 1 },
+                      ]}
+                      onPress={async () => {
+                        try {
+                          const result: any = await certificatesService.shareWhatsapp(
+                            cert.id,
+                          );
+                          if (result?.success === false) {
+                            throw new Error(
+                              result.error || 'WhatsApp share failed',
+                            );
+                          }
+                          Alert.alert(
+                            'Shared',
+                            'Certificate share was sent via WhatsApp.',
+                          );
+                        } catch (error) {
+                          const text = encodeURIComponent(
+                            `Paryavaran Prahri Certificate\n${cert.title}\n${cert.subtitle}${
+                              (cert as any).code
+                                ? `\nCode: ${(cert as any).code}`
+                                : ''
+                            }`,
+                          );
+                          try {
+                            await Linking.openURL(`https://wa.me/?text=${text}`);
+                          } catch {
+                            Alert.alert(
+                              'Share failed',
+                              error instanceof ApiError
+                                ? error.message
+                                : 'Could not share certificate on WhatsApp.',
+                            );
+                          }
+                        }
+                      }}>
+                      <AppIcon name="whatsapp" size={16} color="#111827" />
+                      <Text
+                        style={[styles.taskBtnOutlineText, { color: '#111827', marginLeft: 6 }]}>
+                        Share
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
         )}
 
@@ -2862,5 +2886,29 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontSize: 15,
     fontWeight: '600',
+  },
+  emptyContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+    marginTop: 12,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { getBottomInset, getTopInset } from '../utils/layout';
-import { ApiError, mitrasService, setMitraFlag } from '../api';
+import { ApiError, getStoredUser, mitrasService, setMitraFlag } from '../api';
 
 type Props = {
   onBack: () => void;
@@ -40,7 +40,7 @@ export default function MitraScreen({
   guestMode = false,
 }: Props) {
   const [step, setStep] = useState<'form' | 'card'>('form');
-  const [membership, setMembership] = useState<MembershipType>('premium');
+  const [membership, setMembership] = useState<MembershipType>('free');
   const [name, setName] = useState('');
   const [profession, setProfession] = useState('');
   const [address, setAddress] = useState('');
@@ -48,10 +48,47 @@ export default function MitraScreen({
   const [email, setEmail] = useState('');
   const [cardData, setCardData] = useState<MitraFormData | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    // Intentionally left empty to prevent auto-filling of user details
+    let mounted = true;
+    (async () => {
+      try {
+        const existing = await mitrasService.getMe();
+        if (mounted && existing?.mitraId) {
+          setCardData({
+            name: existing.name || '',
+            profession: existing.profession || '',
+            address: existing.address || '',
+            mobile: existing.mobile || '',
+            email: (existing as any).email || '',
+            membership: ((existing.membership as MembershipType) || 'premium'),
+            mitraId: existing.mitraId,
+          });
+          const approved =
+            String(existing.status || 'Pending').toLowerCase() === 'approved';
+          await setMitraFlag(approved, existing.mitraId);
+          setStep('card');
+        }
+      } catch {
+        // User not a Mitra yet -> prefill details from account if available
+        try {
+          const user = await getStoredUser();
+          if (mounted && user) {
+            if (user.phone) setMobile(user.phone.replace(/\D/g, '').slice(-10));
+            const full = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+            if (full) setName(full);
+            if (user.email) setEmail(user.email);
+          }
+        } catch {}
+      } finally {
+        if (mounted) setLoadingProfile(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleGenerate = async () => {
@@ -183,17 +220,25 @@ export default function MitraScreen({
         )}
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: getBottomInset(32) },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          {step === 'form' ? (
+      {loadingProfile ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#10b981" />
+          <Text style={{ color: '#6b7280', marginTop: 12, fontSize: 13, fontWeight: '600' }}>
+            Checking Paryavaran Mitra Profile...
+          </Text>
+        </View>
+      ) : (
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: getBottomInset(32) },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
+            {step === 'form' ? (
             <>
               <View style={styles.membershipRow}>
                 <Pressable
@@ -285,7 +330,7 @@ export default function MitraScreen({
                   <Text style={styles.generateBtnText}>
                     {membership === 'free'
                       ? 'Join as Volunteer'
-                      : 'Generate Digital Visiting Card'}
+                      : 'Join as Employee (Paid)'}
                   </Text>
                     )}
                   </LinearGradient>
@@ -295,73 +340,72 @@ export default function MitraScreen({
                 ) : null}
               </View>
             </>
-          ) : (
-            cardData && (
-              <>
-                <LinearGradient
-                  colors={['#e8f5e9', '#f0faf4', '#e8f5e9']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.visitingCardBorder}>
-                  <View style={styles.visitingCard}>
-                    <View style={styles.badgeRow}>
-                      <View style={styles.mitraBadge}>
-                        <Text style={styles.mitraBadgeText}>
-                          IN PARYAVARAN MITRA
-                        </Text>
-                      </View>
-                      {cardData.membership === 'premium' && (
-                        <View style={styles.premiumBadge}>
-                          <Text style={styles.premiumBadgeText}>👑 Premium</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <Text style={styles.cardName}>{cardData.name}</Text>
-                    {cardData.profession ? (
-                      <Text style={styles.cardProfession}>
-                        {cardData.profession}
+          ) : cardData ? (
+            <>
+              <LinearGradient
+                colors={['#e8f5e9', '#f0faf4', '#e8f5e9']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.visitingCardBorder}>
+                <View style={styles.visitingCard}>
+                  <View style={styles.badgeRow}>
+                    <View style={styles.mitraBadge}>
+                      <Text style={styles.mitraBadgeText}>
+                        IN PARYAVARAN MITRA
                       </Text>
-                    ) : null}
-
-                    <View style={styles.cardInfoRow}>
-                      <View style={styles.cardInfoBox}>
-                        <Text style={styles.cardInfoLabel}>Mitra ID</Text>
-                        <Text style={styles.cardInfoValue}>
-                          {cardData.mitraId}
-                        </Text>
-                      </View>
-                      <View style={styles.cardInfoBox}>
-                        <Text style={styles.cardInfoLabel}>Mobile</Text>
-                        <Text style={styles.cardInfoValue}>
-                          {cardData.mobile}
-                        </Text>
-                      </View>
                     </View>
-
-                    <View style={styles.cardInfoBoxFull}>
-                      <Text style={styles.cardInfoLabel}>Email</Text>
-                      <Text style={styles.cardInfoValue}>{cardData.email}</Text>
-                    </View>
-
-                    <Text style={styles.verifiedText}>
-                      ✓ Mission 2047 · Verified
-                    </Text>
+                    {cardData.membership === 'premium' && (
+                      <View style={styles.premiumBadge}>
+                        <Text style={styles.premiumBadgeText}>👑 Premium</Text>
+                      </View>
+                    )}
                   </View>
-                </LinearGradient>
 
-                <Pressable
-                  style={styles.homeBtn}
-                  onPress={() => void openMitraHome()}>
-                  <Text style={styles.homeBtnText}>
-                    {guestMode ? 'Continue to Login →' : 'Open Mitra Home →'}
+                  <Text style={styles.cardName}>{cardData.name}</Text>
+                  {cardData.profession ? (
+                    <Text style={styles.cardProfession}>
+                      {cardData.profession}
+                    </Text>
+                  ) : null}
+
+                  <View style={styles.cardInfoRow}>
+                    <View style={styles.cardInfoBox}>
+                      <Text style={styles.cardInfoLabel}>Mitra ID</Text>
+                      <Text style={styles.cardInfoValue}>
+                        {cardData.mitraId}
+                      </Text>
+                    </View>
+                    <View style={styles.cardInfoBox}>
+                      <Text style={styles.cardInfoLabel}>Mobile</Text>
+                      <Text style={styles.cardInfoValue}>
+                        {cardData.mobile}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.cardInfoBoxFull}>
+                    <Text style={styles.cardInfoLabel}>Email</Text>
+                    <Text style={styles.cardInfoValue}>{cardData.email}</Text>
+                  </View>
+
+                  <Text style={styles.verifiedText}>
+                    ✓ Mission 2047 · Verified
                   </Text>
-                </Pressable>
-              </>
-            )
-          )}
+                </View>
+              </LinearGradient>
+
+              <Pressable
+                style={styles.homeBtn}
+                onPress={() => void openMitraHome()}>
+                <Text style={styles.homeBtnText}>
+                  {guestMode ? 'Continue to Login →' : 'Open Mitra Home →'}
+                </Text>
+              </Pressable>
+            </>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+      )}
     </View>
   );
 }
