@@ -12,6 +12,10 @@ import {
   Alert,
   Modal,
   Linking,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import WebView from 'react-native-webview';
@@ -25,6 +29,8 @@ import { getBottomInset, getTopInset } from '../utils/layout';
 import { colors } from '../theme/colors';
 import {
   getStoredUser,
+  getStoredPhone,
+  leadsService,
   journeyService,
   leaderboardService,
   leadersService,
@@ -67,6 +73,18 @@ function isDirectVideoUrl(url?: string): boolean {
     clean.includes('storage.googleapis.com') ||
     clean.includes('/uploads/')
   );
+}
+
+function getVideoBaseUrl(url?: string): string {
+  if (!url) return 'https://www.youtube.com/';
+  try {
+    const clean = url.trim();
+    const match = clean.match(/^(https?:\/\/[^\/]+)/i);
+    if (match) return match[1] + '/';
+  } catch {
+    // fallback
+  }
+  return 'https://www.youtube.com/';
 }
 
 type QuickAction = {
@@ -248,7 +266,119 @@ export default function DashboardScreen({
     youtubeId: '',
     thumbnailUrl: '',
   });
+
+  const hasDirectVideo =
+    typeof conceptVideo?.videoUrl === 'string' &&
+    conceptVideo.videoUrl.trim().length > 0;
+
+  const hasYoutubeVideo =
+    typeof conceptVideo?.youtubeId === 'string' &&
+    conceptVideo.youtubeId.trim().length > 0;
+
+  const hasVideo =
+    (hasDirectVideo || hasYoutubeVideo) && conceptVideo?.isActive !== false;
+
+  useEffect(() => {
+    console.log('[CONCEPT VIDEO CHECK]', {
+      videoUrl: conceptVideo?.videoUrl,
+      youtubeId: conceptVideo?.youtubeId,
+      isActive: conceptVideo?.isActive,
+      hasDirectVideo,
+      hasYoutubeVideo,
+      hasVideo,
+    });
+  }, [conceptVideo, hasDirectVideo, hasYoutubeVideo, hasVideo]);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
+
+  // Insurance Lead Form State
+  const [insuranceModalVisible, setInsuranceModalVisible] = useState(false);
+  const [leadName, setLeadName] = useState('');
+  const [leadMobile, setLeadMobile] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadMessage, setLeadMessage] = useState(
+    'Insurance enquiry from Paryavaran Prahri app',
+  );
+  const [submittingLead, setSubmittingLead] = useState(false);
+
+  const handleOpenInsuranceModal = useCallback(async () => {
+    try {
+      const user = await getStoredUser();
+      const phone = await getStoredPhone();
+      if (user) {
+        const full = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (full) setLeadName(full);
+        if (user.phone) setLeadMobile(user.phone);
+        else if (phone) setLeadMobile(phone);
+        if (user.email) setLeadEmail(user.email);
+      } else if (phone) {
+        setLeadMobile(phone);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    setLeadMessage('Insurance enquiry from Paryavaran Prahri app');
+    setInsuranceModalVisible(true);
+  }, []);
+
+  const handleSubmitInsuranceLead = useCallback(async () => {
+    const trimmedName = leadName.trim();
+    const trimmedMobile = leadMobile.replace(/\D/g, '');
+    const trimmedEmail = leadEmail.trim();
+    const trimmedMsg =
+      leadMessage.trim() || 'Insurance enquiry from Paryavaran Prahri app';
+
+    if (!trimmedName) {
+      Alert.alert('Validation Error', 'Please enter your full name.');
+      return;
+    }
+
+    if (!trimmedMobile || trimmedMobile.length !== 10) {
+      Alert.alert(
+        'Validation Error',
+        'Please enter a valid 10-digit mobile number.',
+      );
+      return;
+    }
+
+    setSubmittingLead(true);
+    try {
+      const res = await leadsService.createLead({
+        name: trimmedName,
+        mobile: trimmedMobile,
+        email: trimmedEmail || undefined,
+        syncType: 'enquiry',
+        message: trimmedMsg,
+        source: 'Paryavaran Prahri Mobile App',
+      });
+
+      Alert.alert(
+        'Enquiry Submitted!',
+        res?.message ||
+          'Your Insurance enquiry has been submitted successfully. Our team will get in touch with you soon.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setInsuranceModalVisible(false);
+              setLeadName('');
+              setLeadMobile('');
+              setLeadEmail('');
+              setLeadMessage('Insurance enquiry from Paryavaran Prahri app');
+            },
+          },
+        ],
+      );
+    } catch (err: any) {
+      Alert.alert(
+        'Submission Failed',
+        err?.message ||
+          'Unable to submit your insurance enquiry. Please check your network and try again.',
+      );
+    } finally {
+      setSubmittingLead(false);
+    }
+  }, [leadName, leadMobile, leadEmail, leadMessage]);
+
 
   useEffect(() => {
     let mounted = true;
@@ -592,46 +722,23 @@ export default function DashboardScreen({
             </View>
             <Text style={styles.amritText}>AMRIT KAAL · NET ZERO BHARAT</Text>
 
-            {/* ENVIRONMENTAL ICONS CARD */}
-            <View style={styles.iconsCard}>
-              <View style={styles.iconsHeader}>
-                <Text style={styles.trophyIcon}>🏆</Text>
-                <Text style={styles.iconsCardTitle}>ENVIRONMENTAL ICONS OF INDIA</Text>
-              </View>
-
-              <View style={styles.personRow}>
-                <View style={styles.personAvatar}>
-                  {inspirationPhoto ? (
-                    <RemoteImage
-                      uri={inspirationPhoto}
-                      version={inspirationPhotoVersion}
-                      style={styles.personAvatarImage}
-                    />
-                  ) : (
-                    <Text style={styles.personAvatarInitials}>
-                      {inspirationName
-                        .split(/\s+/)
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .map(p => p[0])
-                        .join('')
-                        .toUpperCase() || 'RP'}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.personInfo}>
-                  <Text style={styles.personName}>{inspirationName}</Text>
-                  <Text style={styles.personDesc}>{inspirationTitle}</Text>
-                  <View style={styles.tagsRow}>
-                    <View style={styles.tagBadge}>
-                      <Text style={styles.tagText}>🌱 Biodiversity</Text>
-                    </View>
-                    <View style={[styles.tagBadge, styles.tagBadgeDark]}>
-                      <Text style={styles.tagTextDark}>Plantation</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
+            {/* INSURANCE SECTION CARD */}
+            <View style={styles.insuranceCard}>
+              <Text style={styles.insuranceCardTitle}>
+                Insurance for You. A Contribution to Nature.
+              </Text>
+              <Text style={styles.insuranceCardSubtitle}>
+                Initiative by Shri Sevadeep Foundation
+              </Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.getInsuranceBtn,
+                  pressed && styles.getInsuranceBtnPressed,
+                ]}
+                onPress={handleOpenInsuranceModal}
+              >
+                <Text style={styles.getInsuranceBtnText}>Get Insurance</Text>
+              </Pressable>
             </View>
           </LinearGradient>
         </View>
@@ -660,39 +767,15 @@ export default function DashboardScreen({
               </View>
 
               <View style={styles.videoThumbnailContainer}>
-                {conceptVideo.videoUrl && conceptVideo.videoUrl.trim() !== '' ? (
+                {hasVideo ? (
                   typeof WebView !== 'undefined' && WebView ? (
                     <WebView
                       ref={inlineWebViewRef}
-                      source={{
-                        html: isDirectVideoUrl(conceptVideo.videoUrl)
-                          ? `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body, html { width: 100%; height: 100%; background-color: #000000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    video { width: 100%; height: 100%; object-fit: cover; }
-  </style>
-</head>
-<body>
-  <video id="yt-player" src="${conceptVideo.videoUrl}" controls autoplay muted playsinline preload="auto"></video>
-  <script>
-    window.addEventListener('message', function(event) {
-      try {
-        var data = JSON.parse(event.data);
-        var mediaEl = document.getElementById('yt-player');
-        if (data.action === 'mute') { if (mediaEl) mediaEl.muted = true; }
-        else if (data.action === 'unmute') { if (mediaEl) mediaEl.muted = false; }
-        else if (data.action === 'pause') { if (mediaEl) mediaEl.pause(); }
-        else if (data.action === 'play') { if (mediaEl) mediaEl.play(); }
-      } catch(e) {}
-    });
-  </script>
-</body>
-</html>`
-                          : `<!DOCTYPE html>
+                      source={
+                        isDirectVideoUrl(conceptVideo.videoUrl)
+                          ? { uri: conceptVideo.videoUrl }
+                          : {
+                              html: `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -712,48 +795,64 @@ export default function DashboardScreen({
       allowfullscreen>
     </iframe>
   </div>
-  <script>
-    var player;
-    function onYouTubeIframeAPIReady() {
-      if (typeof YT !== 'undefined' && YT.Player) {
-        player = new YT.Player('yt-player', {
-          events: {
-            'onReady': function(event) {
-              event.target.mute();
-              event.target.playVideo();
-            }
-          }
-        });
-      }
-    }
-    window.addEventListener('message', function(event) {
-      try {
-        var data = JSON.parse(event.data);
-        if (data.action === 'mute') {
-          if (player && player.mute) player.mute();
-        } else if (data.action === 'unmute') {
-          if (player && player.unMute) player.unMute();
-        } else if (data.action === 'pause') {
-          if (player && player.pauseVideo) player.pauseVideo();
-        } else if (data.action === 'play') {
-          if (player && player.playVideo) player.playVideo();
-        }
-      } catch(e) {}
-    });
-  </script>
-  <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>`,
-                        baseUrl: isDirectVideoUrl(conceptVideo.videoUrl) ? undefined : 'https://www.youtube.com',
-                      }}
-                      style={{ flex: 1, backgroundColor: '#000000' }}
-                      allowsFullscreenVideo
-                      allowsInlineMediaPlayback
+                              baseUrl: 'https://www.youtube.com',
+                            }
+                      }
+                      style={{ width: '100%', height: 230, backgroundColor: '#000000' }}
+                      allowsFullscreenVideo={true}
+                      allowsInlineMediaPlayback={true}
                       mediaPlaybackRequiresUserAction={false}
-                      javaScriptEnabled
-                      domStorageEnabled
+                      javaScriptEnabled={true}
+                      domStorageEnabled={true}
+                      allowFileAccess={true}
+                      allowFileAccessFromFileURLs={true}
+                      allowUniversalAccessFromFileURLs={true}
                       originWhitelist={['*']}
                       mixedContentMode="always"
+                      androidHardwareAccelerationDisabled={false}
+                      onLoadStart={() => console.log('[ConceptVideo WebView] Load Start')}
+                      onLoad={() => console.log('[ConceptVideo WebView] Load Complete')}
+                      onError={syntheticEvent =>
+                        console.warn('[ConceptVideo WebView Error]', syntheticEvent.nativeEvent)
+                      }
+                      onHttpError={syntheticEvent =>
+                        console.warn('[ConceptVideo WebView HTTP Error]', syntheticEvent.nativeEvent)
+                      }
+                      onMessage={event => {
+                        try {
+                          const msg = JSON.parse(event.nativeEvent.data);
+                          console.log('[ConceptVideo HTML Video Event]', msg.type, msg.detail);
+                        } catch {
+                          console.log('[ConceptVideo WebView Raw Msg]', event.nativeEvent.data);
+                        }
+                      }}
+                      renderError={() => (
+                        <View style={styles.noVideoContainer}>
+                          <MaterialCommunityIcons name="wifi-off" size={40} color="#ef4444" />
+                          <Text style={[styles.noVideoTitle, { color: '#ef4444', marginTop: 8 }]}>
+                            Connection Error / कनेक्शन समस्या
+                          </Text>
+                          <Text style={styles.noVideoSubtitle}>
+                            कृपया अपना इंटरनेट कनेक्शन जांचें और पुनः प्रयास करें
+                          </Text>
+                          <Pressable
+                            style={{
+                              marginTop: 12,
+                              backgroundColor: '#2bb373',
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              borderRadius: 8,
+                            }}
+                            onPress={() => inlineWebViewRef.current?.reload()}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+                              Retry / पुनः प्रयास करें
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
                     />
                   ) : (
                     <Image
@@ -774,32 +873,9 @@ export default function DashboardScreen({
                   </View>
                 )}
               </View>
-
-                {/* Bottom Gradient Fade & Text Content (Only rendered when video is uploaded by admin) */}
-                {Boolean(conceptVideo.videoUrl?.trim()) && (
-                  <>
-                    <LinearGradient
-                      colors={['transparent', 'rgba(0,0,0,0.85)']}
-                      style={styles.bottomFade}
-                      pointerEvents="none"
-                    />
-                    {(Boolean(conceptVideo.title?.trim()) || Boolean(conceptVideo.subtitle?.trim())) && (
-                      <View style={styles.videoTextContent} pointerEvents="none">
-                        {Boolean(conceptVideo.title?.trim()) && (
-                          <Text style={styles.videoTitle}>{conceptVideo.title}</Text>
-                        )}
-                        {Boolean(conceptVideo.subtitle?.trim()) && (
-                          <Text style={styles.videoSubtitle} numberOfLines={2}>
-                            {conceptVideo.subtitle}
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            </LinearGradient>
-          </View>
+            </View>
+          </LinearGradient>
+        </View>
 
         {/* IN-APP VIDEO PLAYER MODAL */}
         <Modal
@@ -833,7 +909,7 @@ export default function DashboardScreen({
                   style={{ color: '#ffffff', fontSize: 16, fontWeight: '700', marginTop: 2 }}
                   numberOfLines={1}
                 >
-                  {conceptVideo.title}
+                  {conceptVideo.title || 'Paryavaran Concept Video'}
                 </Text>
               </View>
               <Pressable
@@ -857,27 +933,12 @@ export default function DashboardScreen({
                 <WebView
                   source={
                     isDirectVideoUrl(conceptVideo.videoUrl)
-                      ? {
-                          html: `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body, html { width: 100%; height: 100%; background-color: #000000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    video { width: 100%; height: 100%; object-fit: contain; }
-  </style>
-</head>
-<body>
-  <video src="${conceptVideo.videoUrl}" controls autoplay playsinline preload="auto"></video>
-</body>
-</html>`,
-                        }
+                      ? { uri: conceptVideo.videoUrl }
                       : {
                           uri: `https://www.youtube.com/embed/${conceptVideo.youtubeId || extractYoutubeId(conceptVideo.videoUrl)}?autoplay=1&rel=0&modestbranding=1`,
                         }
                   }
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, backgroundColor: '#000000' }}
                   allowsFullscreenVideo
                   allowsInlineMediaPlayback
                   mediaPlaybackRequiresUserAction={false}
@@ -1548,6 +1609,129 @@ export default function DashboardScreen({
       <Pressable style={styles.chatbotFab} onPress={onOpenChatbot}>
         <MaterialCommunityIcons name="chat-processing" size={28} color="#fff" />
       </Pressable>
+
+      {/* INSURANCE LEAD ENQUIRY MODAL */}
+      <Modal
+        visible={insuranceModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          if (!submittingLead) setInsuranceModalVisible(false);
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => {
+              if (!submittingLead) setInsuranceModalVisible(false);
+            }}
+          />
+          <View style={styles.leadModalContainer}>
+            <View style={styles.leadModalHeader}>
+              <View>
+                <Text style={styles.leadModalTitle}>Get Insurance</Text>
+                <Text style={styles.leadModalSubtitle}>
+                  Initiative by Shri Sevadeep Foundation
+                </Text>
+              </View>
+              <Pressable
+                style={styles.leadModalCloseBtn}
+                onPress={() => {
+                  if (!submittingLead) setInsuranceModalVisible(false);
+                }}
+                disabled={submittingLead}
+              >
+                <Text style={styles.leadModalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.leadModalBody}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.leadInputGroup}>
+                <Text style={styles.leadInputLabel}>
+                  Full Name <Text style={styles.requiredStar}>*</Text>
+                </Text>
+                <TextInput
+                  style={styles.leadTextInput}
+                  value={leadName}
+                  onChangeText={setLeadName}
+                  placeholder="Enter full name"
+                  placeholderTextColor="#9ca3af"
+                  editable={!submittingLead}
+                />
+              </View>
+
+              <View style={styles.leadInputGroup}>
+                <Text style={styles.leadInputLabel}>
+                  Mobile Number <Text style={styles.requiredStar}>*</Text>
+                </Text>
+                <TextInput
+                  style={styles.leadTextInput}
+                  value={leadMobile}
+                  onChangeText={setLeadMobile}
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  editable={!submittingLead}
+                />
+              </View>
+
+              <View style={styles.leadInputGroup}>
+                <Text style={styles.leadInputLabel}>Email Address</Text>
+                <TextInput
+                  style={styles.leadTextInput}
+                  value={leadEmail}
+                  onChangeText={setLeadEmail}
+                  placeholder="Enter email address (optional)"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  editable={!submittingLead}
+                />
+              </View>
+
+              <View style={styles.leadInputGroup}>
+                <Text style={styles.leadInputLabel}>Message / Enquiry Details</Text>
+                <TextInput
+                  style={[styles.leadTextInput, styles.leadTextAreaInput]}
+                  value={leadMessage}
+                  onChangeText={setLeadMessage}
+                  placeholder="Enter enquiry message"
+                  placeholderTextColor="#9ca3af"
+                  multiline={true}
+                  numberOfLines={3}
+                  editable={!submittingLead}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.leadModalFooter}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.submitLeadBtn,
+                  submittingLead && styles.submitLeadBtnDisabled,
+                  pressed && !submittingLead && styles.submitLeadBtnPressed,
+                ]}
+                onPress={handleSubmitInsuranceLead}
+                disabled={submittingLead}
+              >
+                {submittingLead ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.submitLeadBtnText}>Submit Lead</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -2819,6 +3003,149 @@ const styles = StyleSheet.create({
   chatbotCardBtnText: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: '800',
+  },
+
+  // INSURANCE SECTION CARD STYLES
+  insuranceCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  insuranceCardTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 25,
+    marginBottom: 6,
+  },
+  insuranceCardSubtitle: {
+    color: '#dced72',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 18,
+  },
+  getInsuranceBtn: {
+    backgroundColor: '#00a859',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  getInsuranceBtnPressed: {
+    opacity: 0.85,
+  },
+  getInsuranceBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
+  // LEAD FORM MODAL STYLES
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  leadModalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '85%',
+    paddingBottom: getBottomInset(16),
+  },
+  leadModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  leadModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0a3617',
+    marginBottom: 2,
+  },
+  leadModalSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  leadModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leadModalCloseText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4b5563',
+  },
+  leadModalBody: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    maxHeight: 380,
+  },
+  leadInputGroup: {
+    marginBottom: 16,
+  },
+  leadInputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  requiredStar: {
+    color: '#ef4444',
+  },
+  leadTextInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#111827',
+  },
+  leadTextAreaInput: {
+    minHeight: 75,
+    textAlignVertical: 'top',
+  },
+  leadModalFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  submitLeadBtn: {
+    backgroundColor: '#126e35',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitLeadBtnPressed: {
+    backgroundColor: '#0c4820',
+  },
+  submitLeadBtnDisabled: {
+    opacity: 0.6,
+  },
+  submitLeadBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '800',
   },
 });
