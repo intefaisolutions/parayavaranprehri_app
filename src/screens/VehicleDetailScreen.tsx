@@ -307,29 +307,31 @@ export default function VehicleDetailScreen({
     return `PPVH:${vhId}|${plate}`;
   }, [detailVehicle.vhId, detailVehicle.plate, vehicle.vhId, vehicle.plate]);
 
+  const rawFuel = detailVehicle.fuel;
+  const formattedFuel =
+    !rawFuel || rawFuel === '—'
+      ? 'Petrol'
+      : /^\d+$/.test(rawFuel.trim())
+      ? 'Two Wheeler (BS-VI)'
+      : rawFuel;
+
   const detailGrid = [
     { icon: 'account-outline' as const, label: 'Owner', value: ownerName },
     {
-      icon: 'shield-check-outline' as const,
-      label: 'Insurance',
-      value: insuranceLabel,
+      icon: 'check-decagram-outline' as const,
+      label: 'Status',
+      value: detailVehicle.status || 'ACTIVE',
     },
     {
       icon: 'gas-station-outline' as const,
-      label: 'Fuel Type',
-      value: detailVehicle.fuel,
-    },
-    {
-      icon: 'check-decagram-outline' as const,
-      label: 'Status',
-      value: detailVehicle.status,
+      label: 'Fuel / Type',
+      value: formattedFuel,
     },
     {
       icon: 'calendar-outline' as const,
       label: 'Registered',
-      value: detailVehicle.regDate,
+      value: detailVehicle.regDate || '—',
     },
-    { icon: 'map-marker-outline' as const, label: 'RTO', value: rtoLabel },
   ];
 
   useEffect(() => {
@@ -542,27 +544,85 @@ export default function VehicleDetailScreen({
           </View>
         </LinearGradient>
 
-        {isEditable ? (
-          <View style={styles.actionRow}>
-            <Pressable
-              style={styles.actionBtn}
-              onPress={() => setEditOpen(true)}>
-              <Text style={styles.actionBtnText}>Edit</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.actionBtn, styles.actionBtnDanger]}
-              onPress={handleDelete}
-              disabled={deleting}>
-              {deleting ? (
-                <ActivityIndicator color="#be123c" />
-              ) : (
-                <Text style={[styles.actionBtnText, styles.actionBtnDangerText]}>
-                  Delete
+
+        {Boolean(vehicle.policyNumber || vehicle.isInsuranceVehicle) && (
+          <View style={styles.insurancePolicyCard}>
+            <View style={styles.insuranceHeader}>
+              <View style={styles.insuranceTitleRow}>
+                <AppIcon name="shield-check" size={20} color="#059669" />
+                <Text style={styles.insuranceTitle}>Insurance Status</Text>
+              </View>
+              <View style={styles.activeStatusPill}>
+                <Text style={styles.greenDot}>🟢</Text>
+                <Text style={styles.activeStatusText}>
+                  {vehicle.policyStatus === 'ACTIVE' ? 'Active' : vehicle.policyStatus || 'Active'}
                 </Text>
-              )}
-            </Pressable>
+              </View>
+            </View>
+
+            {Boolean(vehicle.policyNumber) && (
+              <View style={styles.policyDetailRow}>
+                <Text style={styles.policyDetailLabel}>Policy Number:</Text>
+                <Text style={styles.policyDetailValue}>{vehicle.policyNumber}</Text>
+              </View>
+            )}
+
+            <View style={styles.policyDatesGrid}>
+              <View style={styles.dateBlock}>
+                <Text style={styles.dateBlockLabel}>Valid From</Text>
+                <Text style={styles.dateBlockValue}>{vehicle.validFromFormatted || '—'}</Text>
+              </View>
+              <View style={styles.dateBlockDivider} />
+              <View style={styles.dateBlock}>
+                <Text style={styles.dateBlockLabel}>Valid Until</Text>
+                <Text style={styles.dateBlockValue}>{vehicle.validUntilFormatted || '—'}</Text>
+              </View>
+            </View>
           </View>
-        ) : null}
+        )}
+
+        {/* YOUR PLANTATION SECTION */}
+        <View style={styles.plantationCard}>
+          <View style={styles.plantationHeader}>
+            <View style={styles.plantationTitleRow}>
+              <Text style={styles.treeIconEmoji}>🌱</Text>
+              <Text style={styles.plantationTitle}>Your Plantation</Text>
+            </View>
+            <View style={styles.plantationStatusBadge}>
+              <Text style={styles.orangeDot}>🟠</Text>
+              <Text style={styles.plantationStatusText}>Plantation Pending</Text>
+            </View>
+          </View>
+
+          <View style={styles.plantationGrid}>
+            <View style={styles.plantationBoxHighlight}>
+              <Text style={styles.plantationBoxLabel}>🌱 Trees Required</Text>
+              <Text style={styles.plantationBoxValue}>
+                {vehicle.trees > 0 ? vehicle.trees : 5}
+              </Text>
+            </View>
+
+            <View style={styles.plantationRowTwo}>
+              <View style={styles.plantationSubBox}>
+                <Text style={styles.subBoxIcon}>🌿</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.subBoxLabel}>Your Suggestion</Text>
+                  <Text style={styles.subBoxValue}>1 Tree</Text>
+                </View>
+              </View>
+
+              <View style={styles.plantationSubBox}>
+                <Text style={styles.subBoxIcon}>🌳</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.subBoxLabel}>Auto Assigned</Text>
+                  <Text style={styles.subBoxValue}>
+                    {Math.max(0, (vehicle.trees > 0 ? vehicle.trees : 5) - 1)} Trees
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
 
         <Text style={styles.sectionTitle}>Vehicle Details</Text>
         <View style={styles.detailGrid}>
@@ -1144,5 +1204,202 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#059669',
+  },
+  insurancePolicyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#d1fae5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  insuranceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  insuranceTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  insuranceTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#065f46',
+  },
+  activeStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    gap: 4,
+  },
+  greenDot: {
+    fontSize: 9,
+  },
+  activeStatusText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#047857',
+  },
+  policyDetailRow: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  policyDetailLabel: {
+    fontSize: 11,
+    color: '#166534',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  policyDetailValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#047857',
+    letterSpacing: 0.5,
+  },
+  policyDatesGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  dateBlock: {
+    flex: 1,
+  },
+  dateBlockLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  dateBlockValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  dateBlockDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#e5e7eb',
+    marginHorizontal: 12,
+  },
+  plantationCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  plantationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  plantationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  treeIconEmoji: {
+    fontSize: 20,
+  },
+  plantationTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  plantationStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ffedd5',
+    gap: 4,
+  },
+  orangeDot: {
+    fontSize: 9,
+  },
+  plantationStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#c2410c',
+  },
+  plantationGrid: {
+    gap: 10,
+  },
+  plantationBoxHighlight: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  plantationBoxLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  plantationBoxValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#15803d',
+  },
+  plantationRowTwo: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  plantationSubBox: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    gap: 8,
+  },
+  subBoxIcon: {
+    fontSize: 20,
+  },
+  subBoxLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  subBoxValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginTop: 1,
   },
 });

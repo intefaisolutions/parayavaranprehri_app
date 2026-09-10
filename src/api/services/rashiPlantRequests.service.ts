@@ -40,12 +40,14 @@ export const rashiPlantRequestsService = {
     });
   },
 
-  list(params: { status?: string; mine?: boolean } = {}) {
+  async list(params: { status?: string; mine?: boolean } = {}) {
+    const token = await getAccessToken();
     return apiRequest<RashiPlantRequestApi[]>(
       `/rashi-plant-requests${toQueryString({
         status: params.status,
         mine: params.mine ? 'true' : undefined,
       })}`,
+      { auth: Boolean(token) },
     );
   },
 };

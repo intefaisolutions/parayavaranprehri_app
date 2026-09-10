@@ -66,6 +66,17 @@ export function statsFromVehicleTrees(
   };
 }
 
+export function formatDateNice(iso?: string): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function mapApiVehicleToUi(
   api: ApiVehicle,
   stats: VehicleCardStats = EMPTY_STATS,
@@ -80,8 +91,18 @@ export function mapApiVehicleToUi(
     trees: stats.trees,
     co2: stats.co2,
     survival: stats.survival,
-    status: 'Active',
+    status: api.policyStatus || 'Active',
     iconUrl: iconForVehicle(api.name, api.fuel),
+    policyNumber: api.policyNumber,
+    policyStatus: api.policyStatus,
+    policyStartDate: api.policyStartDate,
+    policyEndDate: api.policyEndDate,
+    validFromFormatted: formatDateNice(api.policyStartDate),
+    validUntilFormatted: formatDateNice(api.policyEndDate),
+    vehicleType: api.vehicleType,
+    city: api.city,
+    state: api.state,
+    isInsuranceVehicle: api.isInsuranceVehicle ?? api._id.startsWith('insurance-'),
   };
 }
 
@@ -90,37 +111,85 @@ export function normalizeInsuranceVehicle(
   raw: Record<string, unknown>,
   index: number,
 ): ApiVehicle | null {
+  const vehObj = (
+    raw.vehicle && typeof raw.vehicle === 'object' ? raw.vehicle : {}
+  ) as Record<string, unknown>;
+  const insObj = (
+    raw.insurance && typeof raw.insurance === 'object' ? raw.insurance : {}
+  ) as Record<string, unknown>;
+  const locObj = (
+    raw.location && typeof raw.location === 'object' ? raw.location : {}
+  ) as Record<string, unknown>;
+
   const plate = String(
-    raw.plate ??
-      raw.registrationNumber ??
+    raw.registrationNumber ??
+      vehObj.registrationNumber ??
+      raw.plate ??
       raw.regNo ??
       raw.vehicleNumber ??
-      raw.number ??
       '',
   ).trim();
   if (!plate) return null;
 
   const name = String(
-    raw.name ??
+    raw.vehicleModel ??
+      vehObj.vehicleModel ??
+      raw.name ??
       raw.model ??
-      raw.vehicleModel ??
-      raw.makeModel ??
-      raw.brand ??
       'Insured Vehicle',
   ).trim();
+
   const vhId = String(
-    raw.vhId ?? raw.vehicleId ?? raw.policyNumber ?? raw._id ?? `INS-${index + 1}`,
+    raw.vhId ??
+      vehObj.vehicleId ??
+      insObj.policyNumber ??
+      raw.policyNumber ??
+      `INS-${index + 1}`,
   );
-  const fuel = String(raw.fuel ?? raw.fuelType ?? 'Petrol');
+
+  const fuel = String(
+    raw.fuel ?? raw.fuelType ?? vehObj.vehicleType ?? 'Diesel',
+  );
+
+  const vehicleType = String(
+    raw.vehicleType ?? vehObj.vehicleType ?? 'SUV',
+  ).trim();
+
+  const policyNumber = String(
+    raw.policyNumber ?? insObj.policyNumber ?? '',
+  ).trim();
+
+  const policyStatus = String(
+    raw.policyStatus ?? insObj.status ?? 'ACTIVE',
+  ).trim();
+
+  const policyStartDate = String(
+    raw.policyStartDate ?? insObj.startDate ?? '',
+  ).trim();
+
+  const policyEndDate = String(
+    raw.policyEndDate ?? insObj.endDate ?? '',
+  ).trim();
+
+  const city = String(locObj.city ?? raw.city ?? '').trim();
+  const state = String(locObj.state ?? raw.state ?? '').trim();
 
   return {
-    _id: String(raw._id ?? `insurance-${plate}-${index}`),
+    _id: String(raw._id ?? insObj.insuranceId ?? `insurance-${plate}-${index}`),
     plate,
     name,
     vhId,
     fuel,
-    insuranceId: raw.insuranceId ? String(raw.insuranceId) : undefined,
+    insuranceId: insObj.insuranceId ? String(insObj.insuranceId) : undefined,
     createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+    policyNumber: policyNumber || undefined,
+    policyStatus: policyStatus || 'ACTIVE',
+    policyStartDate: policyStartDate || undefined,
+    policyEndDate: policyEndDate || undefined,
+    vehicleType: vehicleType || undefined,
+    city: city || undefined,
+    state: state || undefined,
+    isInsuranceVehicle: true,
   };
 }
 

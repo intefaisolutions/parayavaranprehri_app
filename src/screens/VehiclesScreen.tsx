@@ -54,37 +54,83 @@ export default function VehiclesScreen({
           ) : (
             vehicles.map(vehicle => (
               <View key={vehicle.id} style={styles.vehicleCard}>
-              <View style={styles.cardHeader}>
-                <View style={styles.vehicleAvatar}>
-                  <AppIcon
-                    name={getVehicleIconName(vehicle)}
-                    size={28}
-                    color="#126e35"
-                  />
+                <View style={styles.cardHeader}>
+                  <View style={styles.vehicleAvatar}>
+                    <AppIcon
+                      name={getVehicleIconName(vehicle)}
+                      size={28}
+                      color="#126e35"
+                    />
+                  </View>
+
+                  <View style={styles.vehicleInfo}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.vehicleName} numberOfLines={2}>
+                        {vehicle.name}
+                      </Text>
+                      <View style={styles.activeBadge}>
+                        <Text style={styles.dotIcon}>🟢</Text>
+                        <Text style={styles.activeBadgeText}>
+                          {vehicle.policyStatus === 'ACTIVE' ? 'Active' : vehicle.policyStatus || 'Active'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.vehicleRegText}>Reg No: {vehicle.plate}</Text>
+
+                    {Boolean(vehicle.policyNumber) && (
+                      <View style={styles.policyBox}>
+                        <Text style={styles.policyLabel}>Policy Number:</Text>
+                        <Text style={styles.policyValue}>{vehicle.policyNumber}</Text>
+                      </View>
+                    )}
+
+                    {(Boolean(vehicle.validFromFormatted) || Boolean(vehicle.validUntilFormatted)) && (
+                      <View style={styles.dateRow}>
+                        <Text style={styles.dateText}>
+                          Valid From: <Text style={styles.dateBold}>{vehicle.validFromFormatted || '—'}</Text>
+                        </Text>
+                        <Text style={styles.dateText}>
+                          Valid Until: <Text style={styles.dateBold}>{vehicle.validUntilFormatted || '—'}</Text>
+                        </Text>
+                      </View>
+                    )}
+
+                    {(Boolean(vehicle.city) || Boolean(vehicle.state)) && (
+                      <View style={styles.locationRow}>
+                        <AppIcon name="map-marker-outline" size={13} color="#6b7280" />
+                        <Text style={styles.locationText}>
+                          {[vehicle.city, vehicle.state].filter(Boolean).join(', ')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
-                <View style={styles.vehicleInfo}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.vehicleName} numberOfLines={1}>
-                      {vehicle.name}
-                    </Text>
-                    <View style={styles.activeBadge}>
-                      <AppIcon name="check-circle" size={14} color="#10b981" />
-                      <Text style={styles.activeBadgeText}>{vehicle.status}</Text>
+                {/* Plantation Summary Box */}
+                <View style={styles.plantationCardMini}>
+                  <View style={styles.plantationMiniHeader}>
+                    <Text style={styles.plantationMiniTitle}>🌱 Your Plantation</Text>
+                    <View style={styles.plantationMiniBadge}>
+                      <Text style={styles.miniBadgeText}>Plantation Pending</Text>
                     </View>
                   </View>
-                  <Text style={styles.vehicleText}>{vehicle.plate}</Text>
-                  <Text style={styles.vehicleText}>{vehicle.vhId}</Text>
-                  <View style={styles.fuelRow}>
-                    <AppIcon name="gas-station" size={14} color="#6b7280" />
-                    <Text style={styles.vehicleTextLight}>
-                      {vehicle.fuel} · Reg {vehicle.regDate}
+                  <View style={styles.plantationMiniMetrics}>
+                    <Text style={styles.miniMetricText}>
+                      Required: <Text style={styles.miniMetricBold}>{vehicle.trees > 0 ? vehicle.trees : 5}</Text>
+                    </Text>
+                    <Text style={styles.miniMetricDot}>·</Text>
+                    <Text style={styles.miniMetricText}>
+                      Suggestion: <Text style={styles.miniMetricBold}>1</Text>
+                    </Text>
+                    <Text style={styles.miniMetricDot}>·</Text>
+                    <Text style={styles.miniMetricText}>
+                      Auto: <Text style={styles.miniMetricBold}>{Math.max(0, (vehicle.trees > 0 ? vehicle.trees : 5) - 1)}</Text>
                     </Text>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.statsRow}>
+                <View style={styles.statsRow}>
                 <View style={[styles.statPill, styles.statPillGreen]}>
                   <AppIcon name="tree" size={16} color="#10b981" />
                   <Text style={[styles.statLabel, styles.statTextGreen]}>
@@ -258,15 +304,109 @@ const styles = StyleSheet.create({
     height: 10,
     marginRight: 4,
   },
+  dotIcon: {
+    fontSize: 8,
+  },
   activeBadgeText: {
     color: '#047857',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  vehicleRegText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  policyBox: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginVertical: 4,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  policyLabel: {
     fontSize: 10,
+    color: '#15803d',
     fontWeight: '600',
   },
-  vehicleText: {
+  policyValue: {
     fontSize: 12,
+    fontWeight: '800',
+    color: '#047857',
+    letterSpacing: 0.5,
+  },
+  dateRow: {
+    marginTop: 4,
+    gap: 2,
+  },
+  dateText: {
+    fontSize: 11,
     color: '#6b7280',
-    marginBottom: 2,
+  },
+  dateBold: {
+    fontWeight: '700',
+    color: '#111827',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 11,
+    color: '#4b5563',
+    fontWeight: '500',
+  },
+  plantationCardMini: {
+    backgroundColor: '#fff7ed',
+    borderRadius: 14,
+    padding: 10,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: '#ffedd5',
+  },
+  plantationMiniHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  plantationMiniTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#9a3412',
+  },
+  plantationMiniBadge: {
+    backgroundColor: '#ffedd5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  miniBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#c2410c',
+  },
+  plantationMiniMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  miniMetricText: {
+    fontSize: 11,
+    color: '#7c2d12',
+  },
+  miniMetricBold: {
+    fontWeight: '800',
+    color: '#9a3412',
+  },
+  miniMetricDot: {
+    color: '#fdba74',
+    fontSize: 10,
   },
   fuelRow: {
     flexDirection: 'row',

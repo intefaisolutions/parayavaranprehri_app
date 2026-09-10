@@ -63,6 +63,14 @@ export type ApiVehicle = {
   insuranceId?: string;
   userId?: string;
   createdAt?: string;
+  policyNumber?: string;
+  policyStatus?: string;
+  policyStartDate?: string;
+  policyEndDate?: string;
+  vehicleType?: string;
+  city?: string;
+  state?: string;
+  isInsuranceVehicle?: boolean;
   updatedAt?: string;
 };
 

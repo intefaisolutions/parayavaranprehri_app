@@ -10,6 +10,16 @@ export type Vehicle = {
   survival: string;
   status: string;
   iconUrl: string;
+  policyNumber?: string;
+  policyStatus?: string;
+  policyStartDate?: string;
+  policyEndDate?: string;
+  validFromFormatted?: string;
+  validUntilFormatted?: string;
+  vehicleType?: string;
+  city?: string;
+  state?: string;
+  isInsuranceVehicle?: boolean;
 };
 
 export const INITIAL_VEHICLES: Vehicle[] = [
