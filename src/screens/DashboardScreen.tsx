@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import WebView from 'react-native-webview';
+import Video from 'react-native-video';
 
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AppIcon, { IconName } from '../components/AppIcon';
@@ -135,10 +136,16 @@ const DEFAULT_INSPIRATION_STATS: ProfileStat[] = [
 ];
 
 const DEFAULT_INSPIRATION_TAGS = [
-  'Mission LiFE',
-  'Ek Ped Maa Ke Naam',
-  'Green Future',
-  'Climate Leader',
+  'COP26',
+  'Climate Change',
+  'Green Energy',
+  'Renewable Energy',
+  'Carbon Reduction',
+  'Net Zero 2070',
+  'Panchamrit',
+  'Sustainable Development',
+  'Environmental Protection',
+  'Green India',
 ];
 
 function mapApiLeaders(items: Leader[]): LeaderCard[] {
@@ -196,6 +203,9 @@ export default function DashboardScreen({
   onSeeAllRanks,
   onOpenChatbot,
 }: DashboardScreenProps) {
+  const isFocused = useIsFocused();
+  const inlineWebViewRef = useRef<any>(null);
+
   const [displayName, setDisplayName] = useState('Citizen');
   const [locationLabel, setLocationLabel] = useState('—');
   const [nameInitials, setNameInitials] = useState('PP');
@@ -235,10 +245,24 @@ export default function DashboardScreen({
   const [leaderboardTitle, setLeaderboardTitle] = useState(
     'Top Eco Contributors',
   );
-
-  const isFocused = useIsFocused();
   const [isMuted, setIsMuted] = useState(true);
-  const inlineWebViewRef = useRef<any>(null);
+  const [inlinePlaying, setInlinePlaying] = useState(false);
+  const [conceptVideo, setConceptVideo] = useState<ConceptVideoData>({
+    title: '',
+    subtitle: '',
+    videoUrl: '',
+    youtubeId: '',
+    thumbnailUrl: '',
+  });
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [insuranceModalVisible, setInsuranceModalVisible] = useState(false);
+  const [leadName, setLeadName] = useState('');
+  const [leadMobile, setLeadMobile] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadMessage, setLeadMessage] = useState(
+    'Insurance enquiry from Paryavaran Prahri app',
+  );
+  const [submittingLead, setSubmittingLead] = useState(false);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
@@ -252,20 +276,13 @@ export default function DashboardScreen({
   }, []);
 
   useEffect(() => {
-    if (inlineWebViewRef.current) {
-      const action = isFocused ? 'play' : 'pause';
-      inlineWebViewRef.current.postMessage(JSON.stringify({ action }));
+    if (!isFocused) {
+      setInlinePlaying(false);
+      if (inlineWebViewRef.current) {
+        inlineWebViewRef.current.postMessage(JSON.stringify({ action: 'pause' }));
+      }
     }
   }, [isFocused]);
-
-  // Active Concept Video State from Admin API
-  const [conceptVideo, setConceptVideo] = useState<ConceptVideoData>({
-    title: '',
-    subtitle: '',
-    videoUrl: '',
-    youtubeId: '',
-    thumbnailUrl: '',
-  });
 
   const hasDirectVideo =
     typeof conceptVideo?.videoUrl === 'string' &&
@@ -288,17 +305,6 @@ export default function DashboardScreen({
       hasVideo,
     });
   }, [conceptVideo, hasDirectVideo, hasYoutubeVideo, hasVideo]);
-  const [videoModalOpen, setVideoModalOpen] = useState(false);
-
-  // Insurance Lead Form State
-  const [insuranceModalVisible, setInsuranceModalVisible] = useState(false);
-  const [leadName, setLeadName] = useState('');
-  const [leadMobile, setLeadMobile] = useState('');
-  const [leadEmail, setLeadEmail] = useState('');
-  const [leadMessage, setLeadMessage] = useState(
-    'Insurance enquiry from Paryavaran Prahri app',
-  );
-  const [submittingLead, setSubmittingLead] = useState(false);
 
   const handleOpenInsuranceModal = useCallback(async () => {
     try {
@@ -354,7 +360,7 @@ export default function DashboardScreen({
       Alert.alert(
         'Enquiry Submitted!',
         res?.message ||
-          'Your Insurance enquiry has been submitted successfully. Our team will get in touch with you soon.',
+        'Your Insurance enquiry has been submitted successfully. Our team will get in touch with you soon.',
         [
           {
             text: 'OK',
@@ -372,7 +378,7 @@ export default function DashboardScreen({
       Alert.alert(
         'Submission Failed',
         err?.message ||
-          'Unable to submit your insurance enquiry. Please check your network and try again.',
+        'Unable to submit your insurance enquiry. Please check your network and try again.',
       );
     } finally {
       setSubmittingLead(false);
@@ -768,14 +774,24 @@ export default function DashboardScreen({
 
               <View style={styles.videoThumbnailContainer}>
                 {hasVideo ? (
-                  typeof WebView !== 'undefined' && WebView ? (
-                    <WebView
-                      ref={inlineWebViewRef}
-                      source={
-                        isDirectVideoUrl(conceptVideo.videoUrl)
-                          ? { uri: conceptVideo.videoUrl }
-                          : {
-                              html: `<!DOCTYPE html>
+                  inlinePlaying ? (
+                    isDirectVideoUrl(conceptVideo.videoUrl) ? (
+                      // ── S3 / direct MP4 → native Video player (no CORS issues)
+                      <Video
+                        source={{ uri: conceptVideo.videoUrl }}
+                        style={{ width: '100%', height: 230, backgroundColor: '#000' }}
+                        controls={true}
+                        resizeMode="contain"
+                        paused={false}
+                        onError={e => console.warn('[ConceptVideo NativeVideo Error]', e)}
+                        onLoad={() => console.log('[ConceptVideo NativeVideo] Loaded')}
+                      />
+                    ) : (
+                      // ── YouTube → WebView iframe
+                      <WebView
+                        ref={inlineWebViewRef}
+                        source={{
+                          html: `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -788,82 +804,104 @@ export default function DashboardScreen({
 </head>
 <body>
   <div class="video-container">
-    <iframe 
+    <iframe
       id="yt-player"
-      src="https://www.youtube.com/embed/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}?enablejsapi=1&autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&controls=1" 
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+      src="https://www.youtube.com/embed/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}?enablejsapi=1&autoplay=1&mute=0&playsinline=1&rel=0&modestbranding=1&controls=1"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       allowfullscreen>
     </iframe>
   </div>
 </body>
 </html>`,
-                              baseUrl: 'https://www.youtube.com',
-                            }
-                      }
-                      style={{ width: '100%', height: 230, backgroundColor: '#000000' }}
-                      allowsFullscreenVideo={true}
-                      allowsInlineMediaPlayback={true}
-                      mediaPlaybackRequiresUserAction={false}
-                      javaScriptEnabled={true}
-                      domStorageEnabled={true}
-                      allowFileAccess={true}
-                      allowFileAccessFromFileURLs={true}
-                      allowUniversalAccessFromFileURLs={true}
-                      originWhitelist={['*']}
-                      mixedContentMode="always"
-                      androidHardwareAccelerationDisabled={false}
-                      onLoadStart={() => console.log('[ConceptVideo WebView] Load Start')}
-                      onLoad={() => console.log('[ConceptVideo WebView] Load Complete')}
-                      onError={syntheticEvent =>
-                        console.warn('[ConceptVideo WebView Error]', syntheticEvent.nativeEvent)
-                      }
-                      onHttpError={syntheticEvent =>
-                        console.warn('[ConceptVideo WebView HTTP Error]', syntheticEvent.nativeEvent)
-                      }
-                      onMessage={event => {
-                        try {
-                          const msg = JSON.parse(event.nativeEvent.data);
-                          console.log('[ConceptVideo HTML Video Event]', msg.type, msg.detail);
-                        } catch {
-                          console.log('[ConceptVideo WebView Raw Msg]', event.nativeEvent.data);
+                          baseUrl: 'https://www.youtube.com',
+                        }}
+                        style={{ width: '100%', height: 230, backgroundColor: '#000000' }}
+                        allowsFullscreenVideo={true}
+                        allowsInlineMediaPlayback={true}
+                        mediaPlaybackRequiresUserAction={false}
+                        javaScriptEnabled={true}
+                        domStorageEnabled={true}
+                        originWhitelist={['*']}
+                        mixedContentMode="always"
+                        androidHardwareAccelerationDisabled={false}
+                        onLoadStart={() => console.log('[ConceptVideo WebView] Load Start')}
+                        onLoad={() => console.log('[ConceptVideo WebView] Load Complete')}
+                        onError={syntheticEvent =>
+                          console.warn('[ConceptVideo WebView Error]', syntheticEvent.nativeEvent)
                         }
-                      }}
-                      renderError={() => (
-                        <View style={styles.noVideoContainer}>
-                          <MaterialCommunityIcons name="wifi-off" size={40} color="#ef4444" />
-                          <Text style={[styles.noVideoTitle, { color: '#ef4444', marginTop: 8 }]}>
-                            Connection Error / कनेक्शन समस्या
-                          </Text>
-                          <Text style={styles.noVideoSubtitle}>
-                            कृपया अपना इंटरनेट कनेक्शन जांचें और पुनः प्रयास करें
-                          </Text>
-                          <Pressable
-                            style={{
-                              marginTop: 12,
-                              backgroundColor: '#2bb373',
-                              paddingHorizontal: 16,
-                              paddingVertical: 8,
-                              borderRadius: 8,
-                            }}
-                            onPress={() => inlineWebViewRef.current?.reload()}
-                          >
-                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-                              Retry / पुनः प्रयास करें
+                        onHttpError={syntheticEvent =>
+                          console.warn('[ConceptVideo WebView HTTP Error]', syntheticEvent.nativeEvent)
+                        }
+                        onMessage={event => {
+                          try {
+                            const msg = JSON.parse(event.nativeEvent.data);
+                            console.log('[ConceptVideo HTML Video Event]', msg.type, msg.detail);
+                          } catch {
+                            console.log('[ConceptVideo WebView Raw Msg]', event.nativeEvent.data);
+                          }
+                        }}
+                        renderError={() => (
+                          <View style={styles.noVideoContainer}>
+                            <MaterialCommunityIcons name="wifi-off" size={40} color="#ef4444" />
+                            <Text style={[styles.noVideoTitle, { color: '#ef4444', marginTop: 8 }]}>
+                              Connection Error / कनेक्शन समस्या
                             </Text>
-                          </Pressable>
-                        </View>
-                      )}
-                    />
+                            <Text style={styles.noVideoSubtitle}>
+                              कृपया अपना इंटरनेट कनेक्शन जांचें और पुनः प्रयास करें
+                            </Text>
+                            <Pressable
+                              style={{
+                                marginTop: 12,
+                                backgroundColor: '#2bb373',
+                                paddingHorizontal: 16,
+                                paddingVertical: 8,
+                                borderRadius: 8,
+                              }}
+                              onPress={() => inlineWebViewRef.current?.reload()}
+                            >
+                              <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+                                Retry / पुनः प्रयास करें
+                              </Text>
+                            </Pressable>
+                          </View>
+                        )}
+                      />
+                    )
                   ) : (
-                    <Image
-                      source={{
-                        uri:
-                          conceptVideo.thumbnailUrl ||
-                          `https://img.youtube.com/vi/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}/maxresdefault.jpg`,
-                      }}
-                      style={styles.videoImage}
-                      resizeMode="cover"
-                    />
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      onPress={() => setInlinePlaying(true)}>
+                      <Image
+                        source={{
+                          uri:
+                            conceptVideo.thumbnailUrl ||
+                            `https://img.youtube.com/vi/${extractYoutubeId(conceptVideo.youtubeId || conceptVideo.videoUrl)}/maxresdefault.jpg`,
+                        }}
+                        style={styles.videoImage}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.videoOverlay}>
+                        <View style={styles.playButton}>
+                          <Text style={styles.playIcon}>▶</Text>
+                        </View>
+                      </View>
+                      <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.75)']}
+                        style={styles.bottomFade}
+                      />
+                      <View style={styles.videoTextContent}>
+                        {conceptVideo.title ? (
+                          <Text style={styles.videoTitle} numberOfLines={1}>
+                            {conceptVideo.title}
+                          </Text>
+                        ) : null}
+                        {conceptVideo.subtitle ? (
+                          <Text style={styles.videoSubtitle} numberOfLines={2}>
+                            {conceptVideo.subtitle}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
                   )
                 ) : (
                   <View style={styles.noVideoContainer}>
@@ -929,15 +967,41 @@ export default function DashboardScreen({
 
             {/* Embedded Video Player (Supports S3 MP4 Video Files & YouTube) */}
             <View style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center' }}>
-              {typeof WebView !== 'undefined' && WebView ? (
+              {isDirectVideoUrl(conceptVideo.videoUrl) ? (
+                // ── S3 / direct MP4 → native Video player
+                <Video
+                  source={{ uri: conceptVideo.videoUrl }}
+                  style={{ flex: 1, backgroundColor: '#000' }}
+                  controls={true}
+                  resizeMode="contain"
+                  paused={false}
+                  onError={e => console.warn('[ConceptVideo Modal NativeVideo Error]', e)}
+                  onLoad={() => console.log('[ConceptVideo Modal NativeVideo] Loaded')}
+                />
+              ) : (
+                // ── YouTube → WebView iframe
                 <WebView
-                  source={
-                    isDirectVideoUrl(conceptVideo.videoUrl)
-                      ? { uri: conceptVideo.videoUrl }
-                      : {
-                          uri: `https://www.youtube.com/embed/${conceptVideo.youtubeId || extractYoutubeId(conceptVideo.videoUrl)}?autoplay=1&rel=0&modestbranding=1`,
-                        }
-                  }
+                  source={{
+                    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; background-color: #000000; overflow: hidden; }
+    iframe { width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe
+    src="https://www.youtube.com/embed/${conceptVideo.youtubeId || extractYoutubeId(conceptVideo.videoUrl)}?autoplay=1&rel=0&modestbranding=1&playsinline=1"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+    allowfullscreen>
+  </iframe>
+</body>
+</html>`,
+                    baseUrl: 'https://www.youtube.com',
+                  }}
                   style={{ flex: 1, backgroundColor: '#000000' }}
                   allowsFullscreenVideo
                   allowsInlineMediaPlayback
@@ -947,6 +1011,7 @@ export default function DashboardScreen({
                   originWhitelist={['*']}
                   mixedContentMode="always"
                 />
+              )}
               ) : (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
                   <Text style={{ color: '#ffffff', fontSize: 16, textAlign: 'center', marginBottom: 16 }}>

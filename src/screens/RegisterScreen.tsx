@@ -4,6 +4,7 @@ import {
   Dimensions,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -49,6 +50,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [gender, setGender] = useState<Gender | ''>('');
   const [address, setAddress] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [touched, setTouched] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
@@ -61,8 +63,9 @@ export default function RegisterScreen() {
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const genderOk = gender !== '';
   const addressOk = address.trim().length >= 5;
+  const termsOk = termsAccepted;
   const isValid =
-    firstOk && lastOk && phoneOk && emailOk && genderOk && addressOk;
+    firstOk && lastOk && phoneOk && emailOk && genderOk && addressOk && termsOk;
 
   const formattedPhone =
     digitsOnly.length > 5
@@ -83,6 +86,10 @@ export default function RegisterScreen() {
       if (!emailOk) reasons.push('Email: enter a valid email address');
       if (!genderOk) reasons.push('Gender: please select Male, Female or Other');
       if (!addressOk) reasons.push('Address: at least 5 characters');
+      if (!termsOk)
+        reasons.push(
+          'Please accept the Terms & Conditions and Privacy Policy to continue.',
+        );
       setErrorMsg(reasons.join('\n'));
       return;
     }
@@ -304,6 +311,58 @@ export default function RegisterScreen() {
               <Text style={styles.errorText}>{errorMsg}</Text>
             ) : null}
             {infoMsg ? <Text style={styles.infoText}>{infoMsg}</Text> : null}
+
+            {/* ── Terms & Conditions + Privacy Policy consent ── */}
+            {/*
+              Layout: plain View row so that tapping a link does NOT
+              accidentally toggle the checkbox on Android.
+              Only the checkbox square is wrapped in a TouchableOpacity.
+            */}
+            <View style={styles.consentRow}>
+              {/* Checkbox tap zone – ONLY toggles the checkbox */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  clearError();
+                  setTermsAccepted(prev => !prev);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    termsAccepted && styles.checkboxChecked,
+                    touched && !termsOk && styles.checkboxError,
+                  ]}>
+                  {termsAccepted ? (
+                    <Text style={styles.checkmark}>✓</Text>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+
+              {/* Consent text – links open browser, plain text does nothing */}
+              <Text style={styles.consentText}>
+                {'I agree to the '}
+                <Text
+                  style={styles.consentLink}
+                  onPress={() =>
+                    Linking.openURL(
+                      'https://appadmin.paryavaranprahri.com/terms-and-conditions.html',
+                    )
+                  }>
+                  Terms & Conditions
+                </Text>
+                {' and '}
+                <Text
+                  style={styles.consentLink}
+                  onPress={() =>
+                    Linking.openURL(
+                      'https://appadmin.paryavaranprahri.com/privacy-policy.html',
+                    )
+                  }>
+                  Privacy Policy
+                </Text>
+              </Text>
+            </View>
 
             <TouchableOpacity
               activeOpacity={0.8}
@@ -551,5 +610,48 @@ const styles = StyleSheet.create({
   loginLinkBold: {
     color: COLORS.gradientStart,
     fontWeight: '700',
+  },
+  // ── Terms & Conditions / Privacy Policy consent ──
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 16,
+    gap: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: COLORS.inputBorder,
+    backgroundColor: COLORS.inputBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  checkboxChecked: {
+    backgroundColor: COLORS.gradientStart,
+    borderColor: COLORS.gradientStart,
+  },
+  checkboxError: {
+    borderColor: COLORS.error,
+  },
+  checkmark: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textMuted,
+    lineHeight: 20,
+  },
+  consentLink: {
+    color: COLORS.gradientStart,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
