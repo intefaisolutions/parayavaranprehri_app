@@ -109,3 +109,5 @@ export type { ConceptVideoData } from './services/conceptVideo.service';
 export { leadsService } from './services/leads.service';
 export type { CreateLeadPayload, LeadResult } from './services/leads.service';
 
+export { contentService } from './services/content.service';
+export type { ContentItem, ContentType } from './services/content.service';

@@ -9,6 +9,8 @@ import OtpScreen from '../screens/OtpScreen';
 import MainLayout from '../screens/MainLayout';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import ChatbotScreen from '../screens/ChatbotScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import TermsAndConditionsScreen from '../screens/TermsAndConditionsScreen';
 import { RootStackParamList } from './types';
 import { getAccessToken, getRefreshToken, getStoredPhone } from '../api';
 
@@ -99,6 +101,16 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Chatbot"
           component={ChatbotScreen}
+          options={{ presentation: 'card' }}
+        />
+        <Stack.Screen
+          name="PrivacyPolicy"
+          component={PrivacyPolicyScreen}
+          options={{ presentation: 'card' }}
+        />
+        <Stack.Screen
+          name="TermsAndConditions"
+          component={TermsAndConditionsScreen}
           options={{ presentation: 'card' }}
         />
       </Stack.Navigator>

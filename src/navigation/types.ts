@@ -12,4 +12,6 @@ export type RootStackParamList = {
   MainLayout: { phoneNumber?: string } | undefined;
   EventDetail: { event: any; onMarkAttendance?: (eventId: string) => void };
   Chatbot: undefined;
-};
+  PrivacyPolicy: undefined;
+  TermsAndConditions: undefined;
+};

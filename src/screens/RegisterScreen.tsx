@@ -4,7 +4,6 @@ import {
   Dimensions,
   Image,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -345,9 +344,7 @@ export default function RegisterScreen() {
                 <Text
                   style={styles.consentLink}
                   onPress={() =>
-                    Linking.openURL(
-                      'https://appadmin.paryavaranprahri.com/terms-and-conditions.html',
-                    )
+                    navigation.navigate('TermsAndConditions')
                   }>
                   Terms & Conditions
                 </Text>
@@ -355,9 +352,7 @@ export default function RegisterScreen() {
                 <Text
                   style={styles.consentLink}
                   onPress={() =>
-                    Linking.openURL(
-                      'https://appadmin.paryavaranprahri.com/privacy-policy.html',
-                    )
+                    navigation.navigate('PrivacyPolicy')
                   }>
                   Privacy Policy
                 </Text>
