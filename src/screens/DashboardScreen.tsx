@@ -978,7 +978,7 @@ export default function DashboardScreen({
                   onError={e => console.warn('[ConceptVideo Modal NativeVideo Error]', e)}
                   onLoad={() => console.log('[ConceptVideo Modal NativeVideo] Loaded')}
                 />
-              ) : (
+              ) : conceptVideo.youtubeId || extractYoutubeId(conceptVideo.videoUrl) ? (
                 // ── YouTube → WebView iframe
                 <WebView
                   source={{
@@ -1011,7 +1011,6 @@ export default function DashboardScreen({
                   originWhitelist={['*']}
                   mixedContentMode="always"
                 />
-              )}
               ) : (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
                   <Text style={{ color: '#ffffff', fontSize: 16, textAlign: 'center', marginBottom: 16 }}>

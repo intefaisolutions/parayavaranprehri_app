@@ -19,11 +19,16 @@ import {
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
+import { CommonActions, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppIcon from '../components/AppIcon';
 import { Vehicle } from '../data/vehiclesData';
+import { RootStackParamList } from '../navigation/types';
 import { getBottomInset, getTopInset } from '../utils/layout';
 import {
+  authService,
   callCenterService,
+  clearSession,
   getAccessToken,
   getRefreshToken,
   getStoredPhone,
@@ -127,6 +132,76 @@ export default function ProfileScreen({
   const [sosWhatsapp, setSosWhatsapp] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>();
   const [showDobPicker, setShowDobPicker] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  const promptDeleteAccount = () => {
+    if (deletingAccount) return;
+
+    Alert.alert(
+      'Delete Account?',
+      'Are you sure you want to permanently delete your account and associated data?\nThis action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            void executeDeleteAccount();
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const executeDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      let userId: string | undefined;
+      const storedUser = await getStoredUser();
+      if (storedUser?.id) {
+        userId = storedUser.id;
+      } else {
+        const me = await usersService.getMe().catch(() => null);
+        if (me && typeof me === 'object') {
+          userId = (me._id as string) || (me.id as string);
+        }
+      }
+
+      if (!userId) {
+        throw new Error('User session not found. Please log in again.');
+      }
+
+      await usersService.remove(userId);
+
+      const refreshToken = await getRefreshToken();
+      await clearSession();
+      if (refreshToken) {
+        void authService.logout(refreshToken).catch(() => undefined);
+      }
+
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'Login',
+              params: { message: 'Account deleted successfully' },
+            },
+          ],
+        }),
+      );
+    } catch (error: any) {
+      setDeletingAccount(false);
+      const message =
+        error?.message ||
+        'Unable to delete your account. Please try again.';
+      Alert.alert('Unable to Delete Account', message);
+    }
+  };
 
   const applyUser = (user: any) => {
     const fn = String(user.firstName || '');
@@ -704,6 +779,31 @@ export default function ProfileScreen({
               </Text>
             </Pressable>
           </View>
+        </View>
+
+        {/* ACCOUNT SETTINGS SECTION */}
+        <View style={styles.accountSettingsSection}>
+          <Text style={styles.sectionTitle}>Account Settings</Text>
+          <Pressable
+            style={styles.deleteAccountCard}
+            onPress={promptDeleteAccount}
+            disabled={deletingAccount}
+            android_ripple={{ color: '#fee2e2' }}>
+            <View style={styles.deleteAccountIconCircle}>
+              {deletingAccount ? (
+                <ActivityIndicator size="small" color="#dc2626" />
+              ) : (
+                <AppIcon name="delete-outline" size={22} color="#dc2626" />
+              )}
+            </View>
+            <View style={styles.deleteAccountDetails}>
+              <Text style={styles.deleteAccountTitle}>Delete Account</Text>
+              <Text style={styles.deleteAccountSubtitle}>
+                Permanently delete your account and associated data
+              </Text>
+            </View>
+            <Text style={styles.deleteChevronIcon}>›</Text>
+          </Pressable>
         </View>
 
       </ScrollView>
@@ -1370,6 +1470,52 @@ const styles = StyleSheet.create({
   supportSubtitle: {
     fontSize: 12,
     color: '#6b7280',
+  },
+  accountSettingsSection: {
+    marginBottom: 32,
+  },
+  deleteAccountCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+  },
+  deleteAccountIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#fef2f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  deleteAccountDetails: {
+    flex: 1,
+  },
+  deleteAccountTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#dc2626',
+    marginBottom: 3,
+  },
+  deleteAccountSubtitle: {
+    fontSize: 12,
+    color: '#991b1b',
+    lineHeight: 16,
+  },
+  deleteChevronIcon: {
+    fontSize: 22,
+    color: '#dc2626',
+    fontWeight: '600',
+    marginLeft: 8,
   },
   signOutButton: {
     flexDirection: 'row',

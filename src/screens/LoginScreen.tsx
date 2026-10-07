@@ -49,7 +49,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (route.params?.registered) {
+    if (route.params?.registered || route.params?.message) {
       setSuccessMsg(route.params.message || 'You registered successfully');
       if (route.params.phoneNumber) {
         setPhone(route.params.phoneNumber.replace(/\D/g, '').slice(0, 10));
